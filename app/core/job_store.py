@@ -125,6 +125,11 @@ def set_job_stopped(job_id: str) -> None:
     log_step(job_id, STEP_STOPPED, "Job was stopped by user.")
 
 
+def set_transcript_id(job_id: str, transcript_id: str) -> None:
+    r = get_redis()
+    r.hset(_meta_key(job_id), mapping={"transcript_id": transcript_id, "updated_at": _ts()})
+
+
 def set_job_paused(job_id: str) -> None:
     r = get_redis()
     r.hset(_meta_key(job_id), mapping={"status": STEP_PAUSED, "updated_at": _ts()})

@@ -20,6 +20,52 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ── Read the meeting's source video URL ──────────────────────────────────────
+
+def get_meeting_video_url(meeting_id: str) -> str:
+    """Return the meeting's DirectVideoURL, or raise if missing."""
+    db = get_db()
+    meeting = db.meetings.find_one(
+        {"_id": ObjectId(meeting_id)}, {"DirectVideoURL": 1}
+    )
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found")
+    url = (meeting.get("DirectVideoURL") or "").strip()
+    if not url:
+        raise ValueError(f"Meeting {meeting_id} has no DirectVideoURL")
+    return url
+
+
+# ── Find-or-create the transcript linked to a meeting ────────────────────────
+
+def ensure_transcript(meeting_id: str) -> str:
+    """
+    Return the transcript_id for a meeting, creating + linking a transcript
+    document if the meeting doesn't have one yet. Caller passes only meeting_id.
+    """
+    db = get_db()
+    meeting = db.meetings.find_one(
+        {"_id": ObjectId(meeting_id)}, {"transcript_id": 1}
+    )
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found")
+
+    existing = meeting.get("transcript_id")
+    if existing:
+        return str(existing)
+
+    now = _now()
+    result = db.transcripts.insert_one(
+        {"textString": "", "createdAt": now, "updatedAt": now, "__v": 0}
+    )
+    db.meetings.update_one(
+        {"_id": ObjectId(meeting_id)},
+        {"$set": {"transcript_id": result.inserted_id, "updatedAt": now}},
+    )
+    logger.info("[mongo] created transcript %s for meeting %s", result.inserted_id, meeting_id)
+    return str(result.inserted_id)
+
+
 # ── Meeting transcript status (mirrors MeetingTranscriptStatusService.ts) ────
 
 def set_transcript_generating(meeting_id: str) -> None:
@@ -94,7 +140,7 @@ def write_log(
             "creator_id": actor,
             "entityType": "meeting",
             "entityId": meeting_id,
-            "details": details or {},
+            "details": details or None,
             "time": _now(),
         })
     except Exception as exc:

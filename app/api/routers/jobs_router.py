@@ -20,6 +20,7 @@ from app.core.job_store import (
     CONTROL_PAUSED, CONTROL_RUNNING, CONTROL_STOPPED, TERMINAL_STATUSES,
 )
 from app.tasks.transcript_task import transcribe_url_task
+from app.tasks import hooks
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -65,11 +66,15 @@ def resume_job(job_id: str):
 
 @router.post("/{job_id}/stop")
 def stop_job(job_id: str):
-    _require_job(job_id)
+    job = _require_job(job_id)
     # Signal cooperative stop, then forcibly terminate the worker process.
     set_control(job_id, CONTROL_STOPPED)
     celery_app.control.revoke(job_id, terminate=True, signal="SIGTERM")
     set_job_stopped(job_id)
+    # Update Mongo here too — terminate=True may kill the worker before its own
+    # checkpoint runs, so the meeting would otherwise hang in "generating".
+    if job["status"] not in TERMINAL_STATUSES:
+        hooks.on_stopped(job.get("meeting_id", ""), job.get("actor", "system"))
     return {"status": "stopped", "job_id": job_id}
 
 
@@ -87,14 +92,12 @@ def rerun_job(job_id: str):
         source_type="url",
         source=job["source"],
         meeting_id=job.get("meeting_id", ""),
-        transcript_id=job.get("transcript_id", ""),
         actor=job.get("actor", "system"),
     )
     transcribe_url_task.apply_async(
         args=[new_id, job["source"]],
         kwargs={
             "meeting_id": job.get("meeting_id", ""),
-            "transcript_id": job.get("transcript_id", ""),
             "actor": job.get("actor", "system"),
         },
         task_id=new_id,
@@ -104,9 +107,11 @@ def rerun_job(job_id: str):
 
 @router.delete("/{job_id}")
 def delete_job(job_id: str):
-    _require_job(job_id)
+    job = _require_job(job_id)
     set_control(job_id, CONTROL_STOPPED)
     celery_app.control.revoke(job_id, terminate=True)
+    if job["status"] not in TERMINAL_STATUSES:
+        hooks.on_stopped(job.get("meeting_id", ""), job.get("actor", "system"))
     clear_control(job_id)
     job_store.delete_job(job_id)
     return {"deleted": True, "job_id": job_id}

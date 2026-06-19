@@ -12,7 +12,7 @@ from celery import Task
 
 from app.core.celery_app import celery_app
 from app.core.job_store import (
-    set_job_done, set_job_failed, set_job_stopped, clear_control,
+    set_job_done, set_job_failed, set_job_stopped, clear_control, set_transcript_id,
     STEP_RESOLVING, STEP_FOUND, STEP_DOWNLOADING,
     STEP_EXTRACTING, STEP_UPLOADING, STEP_TRANSCRIBING, STEP_SAVING, STEP_FAILED,
 )
@@ -35,14 +35,13 @@ def transcribe_url_task(
     job_id: str,
     url: str,
     meeting_id: str = "",
-    transcript_id: str = "",
     actor: str = "system",
 ) -> dict:
     """Process a video URL end-to-end: resolve → download → transcribe → save."""
     log = make_logger(job_id, logger)
     audio_path: str | None = None
     try:
-        hooks.on_generating(meeting_id, transcript_id)
+        transcript_id = _begin(job_id, meeting_id)
 
         checkpoint(job_id)
         log(STEP_RESOLVING, f"Searching for video at: {url}")
@@ -76,6 +75,7 @@ def transcribe_url_task(
 
     except StopRequested:
         set_job_stopped(job_id)
+        hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
         _fail(job_id, str(exc), meeting_id, actor, log)
@@ -94,14 +94,13 @@ def transcribe_upload_task(
     original_filename: str,
     is_video: bool = False,
     meeting_id: str = "",
-    transcript_id: str = "",
     actor: str = "system",
 ) -> dict:
     """Process an uploaded audio or video file."""
     log = make_logger(job_id, logger)
     audio_path: str | None = None
     try:
-        hooks.on_generating(meeting_id, transcript_id)
+        transcript_id = _begin(job_id, meeting_id)
 
         checkpoint(job_id)
         log(STEP_FOUND, f"Received file: {original_filename}")
@@ -117,6 +116,7 @@ def transcribe_upload_task(
 
     except StopRequested:
         set_job_stopped(job_id)
+        hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
         _fail(job_id, str(exc), meeting_id, actor, log)
@@ -127,6 +127,15 @@ def transcribe_upload_task(
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
+
+def _begin(job_id: str, meeting_id: str) -> str:
+    """Resolve the meeting's transcript (find-or-create), mark it generating, and
+    record the id on the job for display. Returns "" when no meeting is linked."""
+    transcript_id = hooks.on_generating(meeting_id)
+    if transcript_id:
+        set_transcript_id(job_id, transcript_id)
+    return transcript_id
+
 
 def _try_captions(job_id, log, url, meeting_id, transcript_id, actor) -> dict | None:
     """Use existing YouTube captions if present. Returns a result dict or None."""

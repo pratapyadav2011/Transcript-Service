@@ -1,0 +1,8 @@
+# Caddy auto-provisions a Let's Encrypt HTTPS certificate for your domain
+# and reverse-proxies to the web container. Set DOMAIN in .env.
+{$DOMAIN} {
+    reverse_proxy web:8000
+    request_body {
+        max_size 2GB
+    }
+}

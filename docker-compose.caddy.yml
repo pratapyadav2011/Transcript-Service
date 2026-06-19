@@ -1,0 +1,26 @@
+# HTTPS overlay. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+# Requires DOMAIN in .env (an A record pointing at this VM's public IP).
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+  # With Caddy in front, the app shouldn't be reachable directly on :8000.
+  web:
+    ports: []
+
+volumes:
+  caddy-data:
+  caddy-config:
