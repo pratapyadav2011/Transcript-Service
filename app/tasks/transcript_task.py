@@ -19,12 +19,13 @@ from app.core.job_store import (
 from app.tasks.control import checkpoint, make_logger, StopRequested
 from app.tasks import hooks
 from app.services.resolver.media_resolver import resolve_candidates
-from app.services.resolver.url_classifier import is_youtube_url
+from app.services.resolver.url_classifier import is_direct_media_url, is_youtube_url
 from app.services.transcriber.youtube_captions import fetch_captions
 from app.services.downloader.audio_pipeline import acquire_audio, cleanup
 from app.services.downloader.ffmpeg_extractor import extract_audio_from_upload
 from app.services.downloader.binary_finder import find_ffmpeg
-from app.services.transcriber.gemini_transcriber import transcribe_file
+from app.services.transcriber.gemini_transcriber import transcribe_file, transcribe_media_url
+from app.services.transcriber.mime_types import ext_to_mime
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,19 @@ def transcribe_url_task(
 
         checkpoint(job_id)
         log(STEP_DOWNLOADING, "Downloading / extracting audio...")
-        audio_path = acquire_audio(
-            candidates=candidates,
-            original_url=url,
-            log=lambda msg: log(STEP_DOWNLOADING, msg),
-        )
+        try:
+            audio_path = acquire_audio(
+                candidates=candidates,
+                original_url=url,
+                log=lambda msg: log(STEP_DOWNLOADING, msg),
+            )
+        except Exception as exc:
+            remote_result = _try_remote_media_transcription(
+                job_id, log, candidates, url, meeting_id, transcript_id, actor, exc
+            )
+            if remote_result is not None:
+                return remote_result
+            raise
         size_mb = os.path.getsize(audio_path) / 1024 / 1024
         log(STEP_EXTRACTING, f"Audio ready: {os.path.basename(audio_path)} ({size_mb:.1f} MB)")
 
@@ -169,6 +178,39 @@ def _transcribe(job_id, log, audio_path: str) -> str:
     log(STEP_UPLOADING, f"Uploading {size_mb:.1f} MB to Gemini Files API...")
     log(STEP_TRANSCRIBING, "Generating transcript with Gemini...")
     return transcribe_file(audio_path, log=lambda msg: log(STEP_TRANSCRIBING, msg))
+
+
+def _try_remote_media_transcription(
+    job_id,
+    log,
+    candidates: list[str],
+    original_url: str,
+    meeting_id: str,
+    transcript_id: str,
+    actor: str,
+    download_error: Exception,
+) -> dict | None:
+    media_url = next((c for c in candidates if is_direct_media_url(c)), None)
+    if not media_url:
+        return None
+
+    _, ext = os.path.splitext(media_url)
+    mime = ext_to_mime(ext)
+    log(
+        STEP_TRANSCRIBING,
+        "Server download failed; asking Gemini to fetch the media URL directly.",
+        level="warn",
+    )
+    logger.warning("Falling back to Gemini URL transcription after download failure: %s", download_error)
+    transcript = transcribe_media_url(
+        media_url,
+        mime,
+        log=lambda msg: log(STEP_TRANSCRIBING, msg),
+    )
+    log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
+    hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_url)
+    set_job_done(job_id, transcript)
+    return {"status": "done", "transcript": transcript, "source": "gemini_url"}
 
 
 def _fail(job_id, error_msg, meeting_id, actor, log) -> None:

@@ -94,6 +94,30 @@ def transcribe_youtube_url(
     return text
 
 
+def transcribe_media_url(
+    media_url: str,
+    mime_type: str,
+    log: Callable[[str], None] | None = None,
+) -> str:
+    """
+    Ask Gemini to transcribe a publicly reachable media URL directly.
+    Useful when the app server's IP is blocked by the media CDN.
+    """
+    client = _client()
+    _log(log, f"Sending media URL directly to Gemini: {media_url}")
+    response = client.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=types.Content(parts=[
+            types.Part(text=TRANSCRIPT_PROMPT),
+            types.Part.from_uri(file_uri=media_url, mime_type=mime_type),
+        ]),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("Gemini returned an empty transcript for the media URL.")
+    return text
+
+
 def _log(log: Callable[[str], None] | None, msg: str) -> None:
     logger.info(msg)
     if log:
