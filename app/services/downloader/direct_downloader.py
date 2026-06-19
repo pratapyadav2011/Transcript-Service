@@ -28,6 +28,15 @@ def _ext_from_url(url: str) -> str:
     return ext.lstrip(".").lower() or "mp4"
 
 
+def _header_variants(referer: str | None) -> list[dict[str, str]]:
+    variants = [dict(HEADERS)]
+    if referer:
+        with_referer = dict(HEADERS)
+        with_referer["Referer"] = referer
+        variants.append(with_referer)
+    return variants
+
+
 def download_direct(
     url: str,
     progress_callback: Callable[[str], None] | None = None,
@@ -44,23 +53,37 @@ def download_direct(
     if progress_callback:
         progress_callback(f"Direct HTTP download: {url}")
 
-    headers = dict(HEADERS)
-    if referer and referer != url:
-        headers["Referer"] = referer
-
     logger.info("Downloading direct media: %s", url)
 
-    with requests.get(url, headers=headers, stream=True, timeout=300) as resp:
-        resp.raise_for_status()
-        total = int(resp.headers.get("content-length", 0))
-        downloaded = 0
-        with open(dest, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
-                fh.write(chunk)
-                downloaded += len(chunk)
-                if progress_callback and total:
-                    pct = int(downloaded / total * 100)
-                    progress_callback(f"Downloading... {pct}% ({downloaded // 1024 // 1024} MB)")
+    last_error: Exception | None = None
+    for headers in _header_variants(referer if referer != url else None):
+        try:
+            with requests.get(url, headers=headers, stream=True, timeout=300) as resp:
+                resp.raise_for_status()
+                total = int(resp.headers.get("content-length", 0))
+                downloaded = 0
+                with open(dest, "wb") as fh:
+                    for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
+                        if not chunk:
+                            continue
+                        fh.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback and total:
+                            pct = int(downloaded / total * 100)
+                            progress_callback(
+                                f"Downloading... {pct}% ({downloaded // 1024 // 1024} MB)"
+                            )
+                last_error = None
+                break
+        except requests.HTTPError as exc:
+            last_error = exc
+            status = exc.response.status_code if exc.response is not None else "unknown"
+            logger.warning("Direct media request failed with HTTP %s for %s", status, url)
+            if status not in (403, 429):
+                break
+
+    if last_error:
+        raise last_error
 
     if os.path.getsize(dest) == 0:
         raise RuntimeError(f"Downloaded file is empty: {url}")
