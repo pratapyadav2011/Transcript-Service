@@ -36,7 +36,11 @@ def acquire_audio(
 
     # ── Strategy 1: yt-dlp ──────────────────────────────────────────────────
     if ytdlp:
-        urls_to_try = list(dict.fromkeys([original_url] + candidates))
+        # Resolved candidates first (e.g. a direct audio .mp3), with the original
+        # URL as a last-resort fallback. For platform pages (Granicus/CivicClerk)
+        # the original URL is a player page yt-dlp turns into a slow, fragile HLS
+        # stream (thousands of fragments), so the direct file must win.
+        urls_to_try = list(dict.fromkeys(candidates + [original_url]))
         for url in urls_to_try:
             try:
                 log(f"Trying yt-dlp on: {url}")

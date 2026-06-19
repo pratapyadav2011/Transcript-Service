@@ -4,6 +4,7 @@ import os
 import subprocess
 import logging
 import tempfile
+from collections import deque
 from typing import Callable
 
 from app.services.downloader.binary_finder import find_ffmpeg
@@ -60,16 +61,22 @@ def download_audio(
         text=True,
     )
 
+    # Keep the last few non-progress lines so a failure can report the real cause
+    # (e.g. "HTTP Error 403", "fragment not found") instead of just "exit code 1".
+    tail: deque[str] = deque(maxlen=12)
     for line in process.stdout:
         line = line.rstrip()
         if line:
             logger.debug("yt-dlp: %s", line)
+            if not line.startswith("[download]"):
+                tail.append(line)
             if progress_callback and ("[download]" in line or "[info]" in line):
                 progress_callback(line)
 
     process.wait()
     if process.returncode != 0:
-        raise RuntimeError(f"yt-dlp exited with code {process.returncode} for {url}")
+        reason = " | ".join(l for l in tail if "ERROR" in l or "WARNING" in l) or " / ".join(tail)
+        raise RuntimeError(f"yt-dlp exited with code {process.returncode}: {reason[:400]}")
 
     # Find the produced file — prefer the extracted audio over any leftover.
     files = [f for f in os.listdir(tmp_dir) if f.startswith("audio.")]
