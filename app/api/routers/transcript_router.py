@@ -17,7 +17,10 @@ from app.tasks.transcript_task import transcribe_url_task, transcribe_upload_tas
 router = APIRouter(prefix="/api/transcript", tags=["transcript"])
 logger = logging.getLogger(__name__)
 
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v"}
+VIDEO_EXTENSIONS = {
+    ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v",
+    ".mpeg", ".mpg", ".ts", ".m2ts", ".mts", ".3gp", ".ogv", ".vob",
+}
 
 
 class UrlRequest(BaseModel):

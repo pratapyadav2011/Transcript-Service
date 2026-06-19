@@ -9,14 +9,16 @@ logger = logging.getLogger(__name__)
 
 
 def _score(url: str) -> int:
-    """Lower score = higher priority."""
-    if "archive-video.granicus.com" in url and url.lower().endswith(".mp4"):
+    """Lower score = higher priority. Prefer audio-only files to avoid
+    downloading the full video when the page exposes an audio rendition."""
+    u = url.lower()
+    if u.endswith(".m4a"):
         return 0
-    if "archive-video.granicus.com" in url and url.lower().endswith(".m4a"):
+    if u.endswith(".mp3"):
         return 1
-    if "archive-video.granicus.com" in url and url.lower().endswith(".mp3"):
+    if u.endswith(".mp4"):
         return 2
-    if url.lower().endswith(".m3u8"):
+    if u.endswith(".m3u8"):
         return 3
     return 4
 

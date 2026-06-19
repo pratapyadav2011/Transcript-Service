@@ -15,7 +15,9 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     result_expires=settings.RESULT_TTL_SECONDS,
-    # One task at a time per worker — audio processing is IO/CPU heavy
+    # Each worker process reserves just one task at a time (no greedy prefetch),
+    # so N jobs run truly in parallel where N = --concurrency. Fair for long,
+    # IO/CPU-heavy audio jobs.
     worker_prefetch_multiplier=1,
     task_acks_late=True,
     task_track_started=True,
