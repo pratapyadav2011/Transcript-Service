@@ -1,0 +1,28 @@
+{% set status = job.status %}
+{% if status == 'DONE' %}
+  <span class="badge badge-success">✓ Done</span>
+{% elif status == 'FAILED' %}
+  <span class="badge badge-error">✗ Failed</span>
+{% elif status == 'STOPPED' %}
+  <span class="badge badge-warning">⏹ Stopped</span>
+{% elif status == 'PAUSED' %}
+  <span class="badge badge-warning">⏸ Paused</span>
+{% elif status == 'QUEUED' %}
+  <span class="badge badge-info">⏳ Queued</span>
+{% elif status == 'TRANSCRIBING' %}
+  <span class="badge badge-active">🤖 Transcribing</span>
+{% elif status == 'DOWNLOADING' %}
+  <span class="badge badge-active">⬇ Downloading</span>
+{% elif status == 'UPLOADING' %}
+  <span class="badge badge-active">⬆ Uploading</span>
+{% elif status == 'RESOLVING' %}
+  <span class="badge badge-active">🔍 Resolving</span>
+{% elif status == 'FOUND' %}
+  <span class="badge badge-active">🎯 Found</span>
+{% elif status == 'EXTRACTING' %}
+  <span class="badge badge-active">🎵 Extracting</span>
+{% elif status == 'SAVING' %}
+  <span class="badge badge-active">💾 Saving</span>
+{% else %}
+  <span class="badge">{{ status }}</span>
+{% endif %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.job_id[:8] }}{% endblock %}
+{% block content %}
+
+{% set done = job.status in ['DONE', 'FAILED', 'STOPPED'] %}
+
+<div class="page-header">
+  <div>
+    <h1>Job Detail</h1>
+    <code class="job-id">{{ job.job_id }}</code>
+  </div>
+  <div class="header-actions">
+    <a href="/jobs" class="btn btn-secondary">← All Jobs</a>
+    {% if not done %}
+      {% if job.status == 'PAUSED' %}
+      <button class="btn btn-success"
+              hx-post="/api/jobs/{{ job.job_id }}/resume" hx-swap="none">▶ Resume</button>
+      {% else %}
+      <button class="btn btn-warn"
+              hx-post="/api/jobs/{{ job.job_id }}/pause" hx-swap="none">⏸ Pause</button>
+      {% endif %}
+      <button class="btn btn-danger"
+              hx-post="/api/jobs/{{ job.job_id }}/stop"
+              hx-confirm="Stop this job?" hx-swap="none">⏹ Stop</button>
+    {% elif job.source_type == 'url' %}
+      <button class="btn btn-secondary" onclick="rerunJob('{{ job.job_id }}')">↻ Rerun</button>
+    {% endif %}
+    <button class="btn btn-secondary" onclick="copyTranscript()">📋 Copy Transcript</button>
+  </div>
+</div>
+
+<!-- Meta info -->
+<div class="card meta-grid">
+  <div><strong>Status</strong>
+    <span id="status-badge"
+          {% if not done %}
+          hx-get="/htmx/jobs/{{ job.job_id }}/status"
+          hx-trigger="every 3s"
+          hx-swap="outerHTML"
+          {% endif %}>
+      {% include "partials/job_status_badge.html" %}
+    </span>
+  </div>
+  <div><strong>Type</strong> <span class="badge badge-{{ job.source_type }}">{{ job.source_type }}</span></div>
+  <div><strong>Source</strong> <span class="wrap-text">{{ job.source }}</span></div>
+  <div><strong>Meeting ID</strong> <code>{{ job.meeting_id or '—' }}</code></div>
+  <div><strong>Transcript ID</strong> <code>{{ job.transcript_id or '—' }}</code></div>
+  <div><strong>Actor</strong> {{ job.actor }}</div>
+  <div><strong>Created</strong> {{ job.created_at }}</div>
+  <div><strong>Updated</strong> {{ job.updated_at }}</div>
+  {% if job.error %}
+  <div class="error-box span-full"><strong>Error:</strong> {{ job.error }}</div>
+  {% endif %}
+</div>
+
+<!-- Live logs -->
+<div class="card">
+  <div class="card-header">
+    <h2>Step Log</h2>
+    <label class="toggle-label">
+      <input type="checkbox" id="auto-scroll" checked /> Auto-scroll
+    </label>
+  </div>
+  <div id="logs-container"
+       {% if not done %}
+       hx-get="/htmx/jobs/{{ job.job_id }}/logs"
+       hx-trigger="every 3s"
+       hx-swap="innerHTML"
+       {% endif %}>
+    {% include "partials/job_logs.html" %}
+  </div>
+</div>
+
+<!-- Transcript preview -->
+{% if job.transcript_preview %}
+<div class="card">
+  <h2>Transcript Preview</h2>
+  <pre id="transcript-text" class="transcript-box">{{ job.transcript_preview }}</pre>
+  {% if job.meeting_id %}
+  <p class="hint">Full transcript saved to MongoDB transcript ID: <code>{{ job.transcript_id }}</code></p>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+function copyTranscript() {
+  const el = document.getElementById('transcript-text');
+  if (el) navigator.clipboard.writeText(el.textContent).then(() => alert('Copied!'));
+}
+</script>
+{% endblock %}

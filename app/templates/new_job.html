@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}New Transcript Job{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Generate Transcript</h1>
+  <p>Submit a video URL or upload an audio/video file. Processing runs in the background.</p>
+</div>
+
+<div class="card-grid">
+
+  <!-- URL submission -->
+  <div class="card">
+    <h2>📎 From URL</h2>
+    <p class="hint">YouTube, Granicus, CivicClerk, or any page with a video stream.</p>
+    <form id="url-form" onsubmit="submitUrlForm(event)">
+      <label>Video URL
+        <input type="url" id="url-input" name="url" required
+               placeholder="https://danville-ca.granicus.com/player/clip/3995" />
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          <span id="url-spinner" class="htmx-indicator spinner"></span>
+          Fetch Transcript
+        </button>
+      </div>
+    </form>
+    <div id="url-result"></div>
+  </div>
+
+  <!-- File upload -->
+  <div class="card">
+    <h2>📁 Upload File</h2>
+    <p class="hint">MP3, MP4, WAV, M4A, WEBM, MOV, AVI — audio or video.</p>
+    <form id="upload-form" enctype="multipart/form-data"
+          onsubmit="submitUploadForm(event)">
+      <label>File
+        <input type="file" name="file" required
+               accept=".mp3,.mp4,.m4a,.wav,.webm,.ogg,.flac,.aac,.mov,.avi,.mkv" />
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          <span id="upload-spinner" class="htmx-indicator spinner"></span>
+          Upload &amp; Fetch Transcript
+        </button>
+      </div>
+    </form>
+    <div id="upload-result"></div>
+  </div>
+
+</div>
+{% endblock %}

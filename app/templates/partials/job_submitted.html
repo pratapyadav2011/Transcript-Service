@@ -1,0 +1,7 @@
+<div class="success-banner">
+  ✓ Job queued! <a href="/jobs/{{ job_id }}">View progress →</a>
+</div>
+<script>
+  // Auto-navigate to job detail after 1 second
+  setTimeout(() => { window.location.href = '/jobs/{{ job_id }}'; }, 1000);
+</script>

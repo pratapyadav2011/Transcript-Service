@@ -1,0 +1,17 @@
+{% set done = job.status in ['DONE', 'FAILED', 'STOPPED'] %}
+<div id="log-box" class="log-box{% if not done %} log-live{% endif %}">
+{% for line in logs %}
+  {% if 'ERROR' in line %}
+    <div class="log-line log-error">{{ line }}</div>
+  {% elif 'WARN' in line %}
+    <div class="log-line log-warn">{{ line }}</div>
+  {% elif 'DONE' in line %}
+    <div class="log-line log-success">{{ line }}</div>
+  {% else %}
+    <div class="log-line">{{ line }}</div>
+  {% endif %}
+{% endfor %}
+{% if not logs %}
+  <div class="log-line log-dim">No log entries yet...</div>
+{% endif %}
+</div>

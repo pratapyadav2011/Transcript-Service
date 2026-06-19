@@ -1,0 +1,47 @@
+{% if jobs %}
+<table class="table">
+  <thead>
+    <tr>
+      <th>Job ID</th>
+      <th>Type</th>
+      <th>Source</th>
+      <th>Status</th>
+      <th>Created</th>
+      <th>Updated</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ job.job_id }}"><code>{{ job.job_id[:8] }}…</code></a></td>
+      <td><span class="badge badge-{{ job.source_type }}">{{ job.source_type }}</span></td>
+      <td class="truncate" title="{{ job.source }}">{{ job.source[:60] }}{% if job.source|length > 60 %}…{% endif %}</td>
+      <td>{% include "partials/job_status_badge.html" %}</td>
+      <td class="ts">{{ job.created_at }}</td>
+      <td class="ts">{{ job.updated_at }}</td>
+      <td class="actions">
+        <a href="/jobs/{{ job.job_id }}" class="btn btn-xs">View</a>
+        {% if job.status not in ['DONE', 'FAILED', 'STOPPED'] %}
+          {% if job.status == 'PAUSED' %}
+          <button class="btn btn-xs btn-success"
+                  hx-post="/api/jobs/{{ job.job_id }}/resume" hx-swap="none">▶ Resume</button>
+          {% else %}
+          <button class="btn btn-xs btn-warn"
+                  hx-post="/api/jobs/{{ job.job_id }}/pause" hx-swap="none">⏸ Pause</button>
+          {% endif %}
+          <button class="btn btn-xs btn-danger"
+                  hx-post="/api/jobs/{{ job.job_id }}/stop"
+                  hx-confirm="Stop this job?" hx-swap="none">⏹ Stop</button>
+        {% elif job.source_type == 'url' %}
+          <button class="btn btn-xs btn-secondary"
+                  hx-post="/api/jobs/{{ job.job_id }}/rerun" hx-swap="none">↻ Rerun</button>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">No jobs yet. <a href="/">Create one →</a></div>
+{% endif %}
