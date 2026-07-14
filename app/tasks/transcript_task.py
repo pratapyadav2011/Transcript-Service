@@ -7,9 +7,10 @@ to `hooks`, keeping this module small and single-purpose.
 """
 from __future__ import annotations
 import os
+import sys
 import logging
-import re
 import shutil
+import traceback
 from celery import Task
 
 from app.core.celery_app import celery_app
@@ -95,13 +96,16 @@ def transcribe_url_task(
         hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
-        if audio_path and os.path.exists(audio_path) and _is_retryable_gemini_error(exc):
+        # Whatever went wrong after the audio was in hand (transcription, saving,
+        # a transient Gemini outage…), keep the audio so the user can retry only
+        # the failed steps instead of re-downloading the whole media.
+        if audio_path and os.path.exists(audio_path):
             cached_path = _preserve_for_retry(job_id, audio_path, logger)
             if cached_path:
                 audio_path = cached_path
                 preserve_audio = True
                 set_transcription_retry(job_id, audio_path, "file")
-                log(STEP_FAILED, "Gemini is temporarily unavailable. Audio was preserved; use Retry transcription to continue without downloading again.", level="warn")
+                log(STEP_FAILED, "Audio was preserved — use “Retry failed steps” to resume without downloading again.", level="warn")
         _fail(job_id, str(exc), meeting_id, actor, log)
         raise
     finally:
@@ -144,13 +148,15 @@ def transcribe_upload_task(
         hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
-        if audio_path and os.path.exists(audio_path) and _is_retryable_gemini_error(exc):
+        # Keep the prepared audio on any post-preparation failure so the user can
+        # retry only the failed steps without re-uploading.
+        if audio_path and os.path.exists(audio_path):
             cached_path = _preserve_for_retry(job_id, audio_path, logger)
             if cached_path:
                 audio_path = cached_path
                 preserve_audio = True
                 set_transcription_retry(job_id, audio_path, "file")
-                log(STEP_FAILED, "Gemini is temporarily unavailable. Audio was preserved; use Retry transcription to continue without uploading again.", level="warn")
+                log(STEP_FAILED, "Audio was preserved — use “Retry failed steps” to resume without re-uploading.", level="warn")
         _fail(job_id, str(exc), meeting_id, actor, log)
         raise
     finally:
@@ -183,10 +189,11 @@ def retry_cached_audio_task(
         hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
-        if os.path.isfile(audio_path) and _is_retryable_gemini_error(exc):
+        # Retry failed again — keep the audio so it can be retried once more.
+        if os.path.isfile(audio_path):
             preserve_audio = True
             set_transcription_retry(job_id, audio_path, cleanup_mode)
-            log(STEP_FAILED, "Gemini is still temporarily unavailable. The audio remains available for another retry.", level="warn")
+            log(STEP_FAILED, "The step failed again — the audio remains available for another retry.", level="warn")
         _fail(job_id, str(exc), meeting_id, actor, log)
         raise
     finally:
@@ -263,19 +270,21 @@ def _try_remote_media_transcription(
 
 
 def _fail(job_id, error_msg, meeting_id, actor, log) -> None:
-    log(STEP_FAILED, error_msg, level="error")
+    # A bare message like KeyError's "'file'" is useless on its own. When we are
+    # inside an active exception, capture the type and last traceback frame so the
+    # job log points at the real failing line; the full trace goes to the worker log.
+    exc_type, exc, tb = sys.exc_info()
+    if exc is not None:
+        logger.exception("Job %s failed: %s", job_id, error_msg)
+        frame = traceback.extract_tb(tb)[-1] if tb else None
+        detail = f"{exc_type.__name__}: {error_msg}"
+        if frame:
+            detail += f"  (at {os.path.basename(frame.filename)}:{frame.lineno} in {frame.name})"
+        log(STEP_FAILED, detail, level="error")
+    else:
+        log(STEP_FAILED, error_msg, level="error")
     set_job_failed(job_id, error_msg)
     hooks.on_failure(meeting_id, error_msg, actor)
-
-
-def _is_retryable_gemini_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return bool(
-        re.search(r"\b503\b", message)
-        or "unavailable" in message
-        or "high demand" in message
-        or "resource exhausted" in message
-    )
 
 
 def _preserve_for_retry(job_id: str, audio_path: str, log: logging.Logger) -> str | None:

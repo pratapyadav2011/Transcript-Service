@@ -36,7 +36,8 @@ CAPTION_PROMPT = (
     "  - end: seconds elapsed when the cue ends.\n"
     "  - speaker: the speaker's name or role if clearly identifiable (e.g. "
     "'Chair', 'Mr. Smith'); otherwise an empty string.\n"
-    "  - text: the exact words spoken during this cue.\n"
+    "  - text: only the exact words spoken during this cue — no speaker name, "
+    "label, or prefix.\n"
     "Cover the ENTIRE recording from start to finish with no gaps; timestamps "
     "must be in order and never overlap. Mark unclear audio as [inaudible] "
     "rather than guessing."
@@ -182,24 +183,11 @@ def _fmt_clock(seconds: float) -> str:
 
 
 def to_transcript_text(cues: list[dict]) -> str:
-    """Format cues as a plain timestamped transcript for storage.
-
-    Consecutive cues from the same named speaker are merged into one paragraph
-    that keeps the speaker turn's first timestamp; unlabeled cues stay on their
-    own line so timestamps remain frequent.
+    """Format cues as a plain timestamped transcript for storage: one line per
+    caption cue, "[HH:MM:SS] spoken words" — the exact words from the audio, with
+    no speaker names or labels added.
     """
-    paras: list[dict] = []
-    for cue in cues:
-        cur = paras[-1] if paras else None
-        if cur and cue["speaker"] and cue["speaker"] == cur["speaker"]:
-            cur["text"] += " " + cue["text"]
-        else:
-            paras.append({"start": cue["start"], "speaker": cue["speaker"], "text": cue["text"]})
-
-    lines = []
-    for p in paras:
-        prefix = f"[{_fmt_clock(p['start'])}]"
-        lines.append(f"{prefix} {p['speaker']}: {p['text']}" if p["speaker"] else f"{prefix} {p['text']}")
+    lines = [f"[{_fmt_clock(cue['start'])}] {cue['text']}" for cue in cues]
     return "\n".join(lines).strip() + "\n"
 
 

@@ -6,6 +6,7 @@ Orchestrates audio acquisition strategies in priority order:
 Raises RuntimeError if all strategies fail.
 """
 from __future__ import annotations
+import os
 import logging
 import shutil
 from typing import Callable
@@ -20,9 +21,29 @@ logger = logging.getLogger(__name__)
 
 Step = Callable[[str], None]
 
+# Containers a direct download may hand us as full video. We strip these to an
+# audio-only MP3 before returning so Gemini isn't asked to ingest a multi-GB file
+# (large uploads fail the Files API finalize with KeyError('file')).
+_VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v", ".flv", ".ts", ".mpg", ".mpeg"}
+
 
 def _unique(urls: list[str]) -> list[str]:
     return list(dict.fromkeys(urls))
+
+
+def _ensure_audio(path: str, ffmpeg: str | None, log: Step) -> str:
+    """If `path` is a video container, extract audio to a small MP3 and drop the
+    original. Audio files are returned unchanged."""
+    if os.path.splitext(path)[1].lower() not in _VIDEO_EXTS:
+        return path
+    if not ffmpeg:
+        log("ffmpeg not found — uploading the full video as-is (large; may be slow).")
+        return path
+    log("Extracting audio from the downloaded video to shrink the upload...")
+    audio = extract_audio(ffmpeg, path, progress_callback=log)
+    shutil.rmtree(os.path.dirname(path), ignore_errors=True)  # free the big video
+    log(f"Audio extracted: {os.path.basename(audio)}")
+    return audio
 
 
 def acquire_audio(
@@ -54,7 +75,7 @@ def acquire_audio(
                 referer=original_url,
             )
             log(f"Direct download succeeded: {path}")
-            return path
+            return _ensure_audio(path, ffmpeg, log)
         except Exception as exc:
             msg = f"Direct download failed for {candidate}: {str(exc)[:200]}"
             errors.append(msg)
