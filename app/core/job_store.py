@@ -59,6 +59,10 @@ def _control_key(job_id: str) -> str:
     return f"job:{job_id}:control"
 
 
+def _transcript_key(job_id: str) -> str:
+    return f"job:{job_id}:transcript"
+
+
 def create_job(
     job_id: str,
     source_type: str,       # "url" | "upload"
@@ -118,7 +122,14 @@ def set_job_failed(job_id: str, error: str) -> None:
 def set_job_done(job_id: str, transcript_preview: str) -> None:
     r = get_redis()
     preview = transcript_preview[:300]
-    r.hset(_meta_key(job_id), mapping={"status": STEP_DONE, "transcript_preview": preview, "updated_at": _ts()})
+    pipe = r.pipeline()
+    pipe.hset(_meta_key(job_id), mapping={"status": STEP_DONE, "transcript_preview": preview, "updated_at": _ts()})
+    # Standalone URL/upload jobs have no MongoDB transcript document. Keep their
+    # complete result in a separate Redis key so list_jobs() remains lightweight.
+    meeting_id = r.hget(_meta_key(job_id), "meeting_id") or ""
+    if not meeting_id:
+        pipe.set(_transcript_key(job_id), transcript_preview, ex=TTL)
+    pipe.execute()
     log_step(job_id, STEP_DONE, "Transcript saved successfully.")
 
 
@@ -184,6 +195,11 @@ def get_job_logs(job_id: str) -> list[str]:
     return r.lrange(_log_key(job_id), 0, -1)
 
 
+def get_job_transcript(job_id: str) -> str:
+    """Return the complete transcript retained for a standalone job."""
+    return get_redis().get(_transcript_key(job_id)) or ""
+
+
 def list_jobs(limit: int = 100) -> list[dict]:
     r = get_redis()
     job_ids = r.zrevrange("jobs:index", 0, limit - 1)
@@ -201,5 +217,6 @@ def delete_job(job_id: str) -> None:
     pipe.delete(_meta_key(job_id))
     pipe.delete(_log_key(job_id))
     pipe.delete(_control_key(job_id))
+    pipe.delete(_transcript_key(job_id))
     pipe.zrem("jobs:index", job_id)
     pipe.execute()

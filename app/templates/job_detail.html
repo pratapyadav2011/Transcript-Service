@@ -77,20 +77,14 @@
 </div>
 
 <!-- Transcript preview -->
-{% if job.transcript_preview %}
+{% if display_transcript %}
 <div class="card">
-  <h2>Transcript Preview</h2>
-  <pre id="transcript-text" class="transcript-box">{{ job.transcript_preview }}</pre>
+  <h2>{% if job.meeting_id %}Transcript Preview{% else %}Full Transcript{% endif %}</h2>
+  <pre id="transcript-text" class="transcript-box">{{ display_transcript }}</pre>
   {% if job.meeting_id %}
   <p class="hint">Full transcript saved to MongoDB transcript ID: <code>{{ job.transcript_id }}</code></p>
   {% endif %}
 </div>
 {% endif %}
 
-<script>
-function copyTranscript() {
-  const el = document.getElementById('transcript-text');
-  if (el) navigator.clipboard.writeText(el.textContent).then(() => alert('Copied!'));
-}
-</script>
 {% endblock %}

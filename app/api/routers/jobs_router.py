@@ -49,6 +49,32 @@ def get_logs(job_id: str):
     return {"job_id": job_id, "logs": job_store.get_job_logs(job_id)}
 
 
+@router.get("/{job_id}/transcript")
+def get_transcript(job_id: str):
+    """Return the full transcript; the job metadata contains only a short preview."""
+    job = _require_job(job_id)
+    if job.get("status") != "DONE":
+        raise HTTPException(status_code=409, detail="Transcript is not ready")
+
+    transcript_id = job.get("transcript_id", "")
+    if transcript_id:
+        from app.services import mongo_writer
+        try:
+            text = mongo_writer.get_transcript_text(transcript_id)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+    else:
+        text = job_store.get_job_transcript(job_id)
+        # Compatibility for jobs completed before full Redis storage was added.
+        if not text:
+            result = celery_app.AsyncResult(job_id).result
+            text = result.get("transcript", "") if isinstance(result, dict) else ""
+
+    if not text:
+        raise HTTPException(status_code=404, detail="Full transcript is not available")
+    return {"job_id": job_id, "transcript": text}
+
+
 @router.post("/{job_id}/pause")
 def pause_job(job_id: str):
     job = _require_job(job_id)

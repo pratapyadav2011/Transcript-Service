@@ -119,6 +119,17 @@ def update_transcript_text(transcript_id: str, text: str) -> None:
     logger.info("[mongo] transcript %s updated (%d chars)", transcript_id, len(text))
 
 
+def get_transcript_text(transcript_id: str) -> str:
+    """Return the complete saved transcript text."""
+    db = get_db()
+    transcript = db.transcripts.find_one(
+        {"_id": ObjectId(transcript_id)}, {"textString": 1}
+    )
+    if not transcript:
+        raise ValueError(f"Transcript {transcript_id} not found")
+    return transcript.get("textString") or ""
+
+
 # ── Application log (mirrors MeetingLogService.ts + writeLog) ────────────────
 
 def write_log(

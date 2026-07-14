@@ -128,6 +128,7 @@ redirect(`https://transcripts.example.com/?token=${makeTranscriptToken(28800)}`)
 | POST   | `/api/transcript/upload`   | Submit a file-upload job         |
 | GET    | `/api/jobs`                | List jobs                        |
 | GET    | `/api/jobs/{id}/logs`      | Full step log                    |
+| GET    | `/api/jobs/{id}/transcript` | Get the complete saved transcript |
 | POST   | `/api/jobs/{id}/pause`     | Pause a running job              |
 | POST   | `/api/jobs/{id}/resume`    | Resume a paused job              |
 | POST   | `/api/jobs/{id}/stop`      | Stop a job                       |

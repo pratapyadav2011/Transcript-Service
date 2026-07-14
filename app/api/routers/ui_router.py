@@ -26,9 +26,13 @@ def ui_job_detail(request: Request, job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     logs = job_store.get_job_logs(job_id)
+    display_transcript = (
+        job_store.get_job_transcript(job_id)
+        if not job.get("meeting_id") else job.get("transcript_preview", "")
+    )
     return templates.TemplateResponse(
         "job_detail.html",
-        {"request": request, "job": job, "logs": logs},
+        {"request": request, "job": job, "logs": logs, "display_transcript": display_transcript},
     )
 
 
