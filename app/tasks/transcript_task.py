@@ -21,14 +21,13 @@ from app.core.job_store import (
     STEP_EXTRACTING, STEP_UPLOADING, STEP_TRANSCRIBING, STEP_SAVING, STEP_FAILED,
 )
 from app.tasks.control import checkpoint, make_logger, StopRequested
-from app.tasks import hooks
+from app.tasks import hooks, fastpath
 from app.services.resolver.media_resolver import resolve_candidates
 from app.services.resolver.url_classifier import is_direct_media_url, is_youtube_url
-from app.services.transcriber.youtube_captions import fetch_captions
 from app.services.downloader.audio_pipeline import acquire_audio, cleanup
 from app.services.downloader.ffmpeg_extractor import extract_audio_from_upload
 from app.services.downloader.binary_finder import find_ffmpeg
-from app.services.transcriber.gemini_transcriber import transcribe_file, transcribe_media_url
+from app.services.transcriber.caption_generator import generate_captions, generate_captions_from_url
 from app.services.transcriber.mime_types import ext_to_mime
 
 logger = logging.getLogger(__name__)
@@ -54,12 +53,16 @@ def transcribe_url_task(
         candidates = resolve_candidates(url)
         log(STEP_FOUND, f"Found {len(candidates)} media candidate(s): {candidates[0]}")
 
-        # Fast-path: reuse existing YouTube captions instead of audio + Gemini.
+        # Fast-path: reuse existing captions/subtitles instead of audio + Gemini.
+        # YouTube exposes a transcript API; other players (e.g. Granicus) sometimes
+        # ship an embedded VTT we can pull without downloading the media.
         checkpoint(job_id)
         if is_youtube_url(url):
-            captions = _try_captions(job_id, log, url, meeting_id, transcript_id, actor)
-            if captions is not None:
-                return captions
+            done = fastpath.try_captions(job_id, log, url, meeting_id, transcript_id, actor)
+        else:
+            done = fastpath.try_subtitles(job_id, log, url, meeting_id, transcript_id, actor)
+        if done is not None:
+            return done
 
         checkpoint(job_id)
         log(STEP_DOWNLOADING, "Downloading / extracting audio...")
@@ -203,19 +206,6 @@ def _begin(job_id: str, meeting_id: str) -> str:
     return transcript_id
 
 
-def _try_captions(job_id, log, url, meeting_id, transcript_id, actor) -> dict | None:
-    """Use existing YouTube captions if present. Returns a result dict or None."""
-    log(STEP_TRANSCRIBING, "Checking for existing YouTube captions...")
-    captions = fetch_captions(url, log=lambda m: log(STEP_TRANSCRIBING, m))
-    if not captions:
-        log(STEP_DOWNLOADING, "No captions found — downloading audio for Gemini...")
-        return None
-    log(STEP_SAVING, f"Using YouTube captions ({len(captions)} chars)...")
-    hooks.on_success(meeting_id, transcript_id, captions, actor, source_label=url)
-    set_job_done(job_id, captions)
-    return {"status": "done", "transcript": captions, "source": "captions"}
-
-
 def _prepare_upload(job_id, log, file_path, original_filename, is_video) -> str:
     """Return the audio path to transcribe, extracting from video when needed."""
     if not is_video:
@@ -233,8 +223,10 @@ def _prepare_upload(job_id, log, file_path, original_filename, is_video) -> str:
 def _transcribe(job_id, log, audio_path: str) -> str:
     size_mb = os.path.getsize(audio_path) / 1024 / 1024
     log(STEP_UPLOADING, f"Uploading {size_mb:.1f} MB to Gemini Files API...")
-    log(STEP_TRANSCRIBING, "Generating transcript with Gemini...")
-    return transcribe_file(audio_path, log=lambda msg: log(STEP_TRANSCRIBING, msg))
+    log(STEP_TRANSCRIBING, "Generating timestamped transcript with Gemini...")
+    # Verbatim, time-coded transcript (temperature 0). Returned as plain text so
+    # it is stored in Mongo/Redis exactly like any other transcript string.
+    return generate_captions(audio_path, fmt="text", log=lambda msg: log(STEP_TRANSCRIBING, msg))
 
 
 def _try_remote_media_transcription(
@@ -259,7 +251,7 @@ def _try_remote_media_transcription(
         level="warn",
     )
     logger.warning("Falling back to Gemini URL transcription after download failure: %s", download_error)
-    transcript = transcribe_media_url(
+    transcript = generate_captions_from_url(
         media_url,
         mime,
         log=lambda msg: log(STEP_TRANSCRIBING, msg),
