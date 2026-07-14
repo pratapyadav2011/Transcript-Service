@@ -27,6 +27,10 @@ class Settings:
     YTDLP_PATH: str = os.getenv("YTDLP_PATH", "")
     FFMPEG_PATH: str = os.getenv("FFMPEG_PATH", "")
 
+    # Optional HTTP/SOCKS proxy for yt-dlp subtitle fetches. Leave empty to fetch
+    # directly; set it only when a media CDN blocks the server's IP.
+    MEDIA_PROXY_URL: str = os.getenv("MEDIA_PROXY_URL", "")
+
     # API key for Next.js → Python service calls
     API_SECRET_KEY: str = os.getenv("API_SECRET_KEY", "")
 
