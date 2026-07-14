@@ -81,6 +81,9 @@ def create_job(
         "updated_at": now,
         "error": "",
         "transcript_preview": "",
+        "retryable": "false",
+        "retry_audio_path": "",
+        "retry_cleanup_mode": "",
     }
     pipe = r.pipeline()
     pipe.hset(_meta_key(job_id), mapping=meta)
@@ -128,6 +131,25 @@ def set_job_stopped(job_id: str) -> None:
 def set_transcript_id(job_id: str, transcript_id: str) -> None:
     r = get_redis()
     r.hset(_meta_key(job_id), mapping={"transcript_id": transcript_id, "updated_at": _ts()})
+
+
+def set_transcription_retry(job_id: str, audio_path: str, cleanup_mode: str) -> None:
+    """Remember downloaded audio so a transient Gemini failure can resume without downloading."""
+    get_redis().hset(_meta_key(job_id), mapping={
+        "retryable": "true",
+        "retry_audio_path": audio_path,
+        "retry_cleanup_mode": cleanup_mode,
+        "updated_at": _ts(),
+    })
+
+
+def clear_transcription_retry(job_id: str) -> None:
+    get_redis().hset(_meta_key(job_id), mapping={
+        "retryable": "false",
+        "retry_audio_path": "",
+        "retry_cleanup_mode": "",
+        "updated_at": _ts(),
+    })
 
 
 def set_job_paused(job_id: str) -> None:

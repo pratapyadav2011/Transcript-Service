@@ -55,6 +55,17 @@ async function rerunJob(jobId) {
   }
 }
 
+async function retryTranscription(jobId) {
+  try {
+    const res = await fetch(`/api/jobs/${jobId}/retry-transcription`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Transcription retry failed');
+    goToJob(data.job_id);
+  } catch (err) {
+    alert('Transcription retry failed: ' + err.message);
+  }
+}
+
 // On the job-detail page, reload after a pause/resume/stop so the header
 // buttons reflect the new state (the status badge already polls live).
 document.body.addEventListener('htmx:afterRequest', (e) => {

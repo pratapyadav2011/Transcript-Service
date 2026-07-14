@@ -132,6 +132,7 @@ redirect(`https://transcripts.example.com/?token=${makeTranscriptToken(28800)}`)
 | POST   | `/api/jobs/{id}/resume`    | Resume a paused job              |
 | POST   | `/api/jobs/{id}/stop`      | Stop a job                       |
 | POST   | `/api/jobs/{id}/rerun`     | Requeue a URL job                |
+| POST   | `/api/jobs/{id}/retry-transcription` | Retry Gemini using preserved audio after a temporary 503 |
 | DELETE | `/api/jobs/{id}`           | Delete a job                     |
 
 ## Notes on pause/stop

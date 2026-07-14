@@ -22,6 +22,11 @@
       <button class="btn btn-danger"
               hx-post="/api/jobs/{{ job.job_id }}/stop"
               hx-confirm="Stop this job?" hx-swap="none">⏹ Stop</button>
+    {% elif job.retryable == 'true' %}
+      <button class="btn btn-success" onclick="retryTranscription('{{ job.job_id }}')">↻ Retry transcription</button>
+      {% if job.source_type == 'url' %}
+      <button class="btn btn-secondary" onclick="rerunJob('{{ job.job_id }}')">↻ Full rerun</button>
+      {% endif %}
     {% elif job.source_type == 'url' %}
       <button class="btn btn-secondary" onclick="rerunJob('{{ job.job_id }}')">↻ Rerun</button>
     {% endif %}

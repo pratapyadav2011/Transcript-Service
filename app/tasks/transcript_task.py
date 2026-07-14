@@ -8,11 +8,15 @@ to `hooks`, keeping this module small and single-purpose.
 from __future__ import annotations
 import os
 import logging
+import re
+import shutil
 from celery import Task
 
 from app.core.celery_app import celery_app
+from app.core.config import settings
 from app.core.job_store import (
     set_job_done, set_job_failed, set_job_stopped, clear_control, set_transcript_id,
+    set_transcription_retry, clear_transcription_retry,
     STEP_RESOLVING, STEP_FOUND, STEP_DOWNLOADING,
     STEP_EXTRACTING, STEP_UPLOADING, STEP_TRANSCRIBING, STEP_SAVING, STEP_FAILED,
 )
@@ -41,6 +45,7 @@ def transcribe_url_task(
     """Process a video URL end-to-end: resolve → download → transcribe → save."""
     log = make_logger(job_id, logger)
     audio_path: str | None = None
+    preserve_audio = False
     try:
         transcript_id = _begin(job_id, meeting_id)
 
@@ -87,11 +92,18 @@ def transcribe_url_task(
         hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
+        if audio_path and os.path.exists(audio_path) and _is_retryable_gemini_error(exc):
+            cached_path = _preserve_for_retry(job_id, audio_path, logger)
+            if cached_path:
+                audio_path = cached_path
+                preserve_audio = True
+                set_transcription_retry(job_id, audio_path, "file")
+                log(STEP_FAILED, "Gemini is temporarily unavailable. Audio was preserved; use Retry transcription to continue without downloading again.", level="warn")
         _fail(job_id, str(exc), meeting_id, actor, log)
         raise
     finally:
         clear_control(job_id)
-        if audio_path:
+        if audio_path and not preserve_audio:
             cleanup(audio_path)
 
 
@@ -108,6 +120,7 @@ def transcribe_upload_task(
     """Process an uploaded audio or video file."""
     log = make_logger(job_id, logger)
     audio_path: str | None = None
+    preserve_audio = False
     try:
         transcript_id = _begin(job_id, meeting_id)
 
@@ -128,11 +141,55 @@ def transcribe_upload_task(
         hooks.on_stopped(meeting_id, actor)
         return {"status": "stopped"}
     except Exception as exc:
+        if audio_path and os.path.exists(audio_path) and _is_retryable_gemini_error(exc):
+            cached_path = _preserve_for_retry(job_id, audio_path, logger)
+            if cached_path:
+                audio_path = cached_path
+                preserve_audio = True
+                set_transcription_retry(job_id, audio_path, "file")
+                log(STEP_FAILED, "Gemini is temporarily unavailable. Audio was preserved; use Retry transcription to continue without uploading again.", level="warn")
         _fail(job_id, str(exc), meeting_id, actor, log)
         raise
     finally:
         clear_control(job_id)
-        _cleanup_upload(file_path, audio_path, is_video)
+        _cleanup_upload(file_path, audio_path, is_video, preserve_audio)
+
+
+@celery_app.task(bind=True, name="transcript.retry_cached_audio", max_retries=0)
+def retry_cached_audio_task(
+    self: Task, job_id: str, audio_path: str, cleanup_mode: str,
+    meeting_id: str = "", actor: str = "system", source_label: str = "",
+) -> dict:
+    """Retry only Gemini transcription using audio retained by a failed job."""
+    log = make_logger(job_id, logger)
+    preserve_audio = False
+    try:
+        if not os.path.isfile(audio_path):
+            raise RuntimeError("Preserved audio is no longer available; rerun the full job.")
+        transcript_id = _begin(job_id, meeting_id)
+        clear_transcription_retry(job_id)
+        log(STEP_FOUND, f"Reusing preserved audio: {os.path.basename(audio_path)}")
+        checkpoint(job_id)
+        transcript = _transcribe(job_id, log, audio_path)
+        log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
+        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=source_label)
+        set_job_done(job_id, transcript)
+        return {"status": "done", "transcript": transcript, "source": "cached_audio"}
+    except StopRequested:
+        set_job_stopped(job_id)
+        hooks.on_stopped(meeting_id, actor)
+        return {"status": "stopped"}
+    except Exception as exc:
+        if os.path.isfile(audio_path) and _is_retryable_gemini_error(exc):
+            preserve_audio = True
+            set_transcription_retry(job_id, audio_path, cleanup_mode)
+            log(STEP_FAILED, "Gemini is still temporarily unavailable. The audio remains available for another retry.", level="warn")
+        _fail(job_id, str(exc), meeting_id, actor, log)
+        raise
+    finally:
+        clear_control(job_id)
+        if not preserve_audio:
+            _cleanup_cached_audio(audio_path, cleanup_mode)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -219,11 +276,52 @@ def _fail(job_id, error_msg, meeting_id, actor, log) -> None:
     hooks.on_failure(meeting_id, error_msg, actor)
 
 
-def _cleanup_upload(file_path, audio_path, is_video) -> None:
+def _is_retryable_gemini_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return bool(
+        re.search(r"\b503\b", message)
+        or "unavailable" in message
+        or "high demand" in message
+        or "resource exhausted" in message
+    )
+
+
+def _preserve_for_retry(job_id: str, audio_path: str, log: logging.Logger) -> str | None:
+    """Move audio from worker-local /tmp into the web/worker shared uploads volume."""
     try:
-        if file_path and os.path.exists(file_path):
+        retry_dir = os.path.join(settings.UPLOAD_DIR, "retry-cache")
+        os.makedirs(retry_dir, exist_ok=True)
+        ext = os.path.splitext(audio_path)[1] or ".audio"
+        destination = os.path.join(retry_dir, f"{job_id}{ext}")
+        original_parent = os.path.dirname(audio_path)
+        shutil.move(audio_path, destination)
+        if original_parent and original_parent != settings.UPLOAD_DIR:
+            try:
+                os.rmdir(original_parent)
+            except OSError:
+                pass
+        return destination
+    except Exception:
+        log.exception("Could not preserve audio for a transcription retry")
+        return None
+
+
+def _cleanup_cached_audio(audio_path: str, cleanup_mode: str) -> None:
+    if cleanup_mode == "temp":
+        cleanup(audio_path)
+        return
+    try:
+        if audio_path and os.path.exists(audio_path):
+            os.remove(audio_path)
+    except Exception:
+        pass
+
+
+def _cleanup_upload(file_path, audio_path, is_video, preserve_audio=False) -> None:
+    try:
+        if file_path and os.path.exists(file_path) and not (preserve_audio and audio_path == file_path):
             os.remove(file_path)
     except Exception:
         pass
-    if is_video and audio_path and audio_path != file_path:
+    if is_video and audio_path and audio_path != file_path and not preserve_audio:
         cleanup(audio_path)

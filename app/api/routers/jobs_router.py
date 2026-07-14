@@ -10,6 +10,7 @@ POST   /api/jobs/{id}/rerun   — requeue a URL job with the same parameters
 DELETE /api/jobs/{id}         — remove from store
 """
 from __future__ import annotations
+import os
 import uuid
 from fastapi import APIRouter, HTTPException
 
@@ -19,7 +20,7 @@ from app.core.job_store import (
     set_control, clear_control, set_job_stopped,
     CONTROL_PAUSED, CONTROL_RUNNING, CONTROL_STOPPED, TERMINAL_STATUSES,
 )
-from app.tasks.transcript_task import transcribe_url_task
+from app.tasks.transcript_task import transcribe_url_task, retry_cached_audio_task
 from app.tasks import hooks
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -105,6 +106,29 @@ def rerun_job(job_id: str):
     return {"status": "queued", "job_id": new_id, "rerun_of": job_id}
 
 
+@router.post("/{job_id}/retry-transcription")
+def retry_transcription(job_id: str):
+    job = _require_job(job_id)
+    if job.get("status") != "FAILED" or job.get("retryable") != "true":
+        raise HTTPException(status_code=409, detail="This job has no retryable transcription failure")
+    audio_path = job.get("retry_audio_path", "")
+    if not audio_path or not os.path.isfile(audio_path):
+        job_store.clear_transcription_retry(job_id)
+        raise HTTPException(status_code=410, detail="Preserved audio is no longer available; rerun the full job")
+    new_id = str(uuid.uuid4())
+    job_store.create_job(
+        job_id=new_id, source_type=job["source_type"], source=job["source"],
+        meeting_id=job.get("meeting_id", ""), actor=job.get("actor", "system"),
+    )
+    job_store.clear_transcription_retry(job_id)
+    retry_cached_audio_task.apply_async(
+        args=[new_id, audio_path, job.get("retry_cleanup_mode", "temp")],
+        kwargs={"meeting_id": job.get("meeting_id", ""), "actor": job.get("actor", "system"), "source_label": job["source"]},
+        task_id=new_id,
+    )
+    return {"status": "queued", "job_id": new_id, "retry_of": job_id}
+
+
 @router.delete("/{job_id}")
 def delete_job(job_id: str):
     job = _require_job(job_id)
@@ -112,6 +136,16 @@ def delete_job(job_id: str):
     celery_app.control.revoke(job_id, terminate=True)
     if job["status"] not in TERMINAL_STATUSES:
         hooks.on_stopped(job.get("meeting_id", ""), job.get("actor", "system"))
+    retry_audio = job.get("retry_audio_path", "")
+    if retry_audio and os.path.isfile(retry_audio):
+        if job.get("retry_cleanup_mode") == "temp":
+            from app.services.downloader.audio_pipeline import cleanup
+            cleanup(retry_audio)
+        else:
+            try:
+                os.remove(retry_audio)
+            except OSError:
+                pass
     clear_control(job_id)
     job_store.delete_job(job_id)
     return {"deleted": True, "job_id": job_id}
