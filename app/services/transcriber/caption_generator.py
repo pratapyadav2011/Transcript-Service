@@ -127,6 +127,10 @@ def _generate_and_format(client, contents, fmt: str, log) -> str:
             response_mime_type="application/json",
             response_schema=_CAPTION_SCHEMA,
             max_output_tokens=65536,
+            # Transcription needs no reasoning. gemini-2.5-flash thinks by default,
+            # and those tokens count against max_output_tokens — which was starving
+            # the JSON and truncating it mid-string. Disable thinking entirely.
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
 
@@ -134,16 +138,49 @@ def _generate_and_format(client, contents, fmt: str, log) -> str:
     if not cues:
         raise RuntimeError("Gemini returned no caption cues.")
 
+    if _was_truncated(response):
+        _log(log, f"Gemini output hit the token limit; kept the first {len(cues)} "
+                  f"cues. Very long recordings may transcribe only partially.")
+
     _log(log, f"Formatting {len(cues)} caption cues as {fmt}...")
     return _FORMATTERS[fmt](cues)
 
 
+def _was_truncated(response) -> bool:
+    """True when Gemini stopped because it hit the output token limit."""
+    try:
+        return "MAX_TOKENS" in str(response.candidates[0].finish_reason)
+    except (AttributeError, IndexError, TypeError):
+        return False
+
+
+def _loads_lenient(raw: str | None) -> list:
+    """json.loads, but tolerate a truncated array by keeping the complete objects.
+
+    When Gemini's output is cut off at the token limit the trailing object is
+    half-written; we back up to the last complete `}` and close the array so the
+    finished cues are still usable.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        pass
+    cut = text.rfind("}")
+    while cut != -1:
+        try:
+            return json.loads(text[: cut + 1] + "]")
+        except json.JSONDecodeError:
+            cut = text.rfind("}", 0, cut)
+    return []
+
+
 def _parse_cues(raw: str | None) -> list[dict]:
     """Parse Gemini's JSON, keep only sane cues, and sort by start time."""
-    try:
-        data = json.loads(raw or "[]")
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Gemini returned invalid caption JSON: {exc}") from exc
+    data = _loads_lenient(raw)
 
     cues: list[dict] = []
     for item in data:
