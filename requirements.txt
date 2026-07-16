@@ -14,3 +14,8 @@ httpx==0.28.1
 requests==2.32.3
 flower==2.0.1
 pymongo[srv]==4.10.1
+
+# Forced alignment: aligns Gemini's transcript text to the audio for accurate
+# timestamps. numpy is pinned <2 for aeneas C-extension compatibility.
+numpy==1.26.4
+aeneas==1.7.3.0

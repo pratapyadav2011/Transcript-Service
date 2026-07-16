@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m py_compile app/tasks/transcript_task.py app/tasks/fastpath.py app/services/resolver/civicclerk_resolver.py)"
+    ]
+  }
+}

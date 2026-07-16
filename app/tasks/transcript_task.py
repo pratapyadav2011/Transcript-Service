@@ -28,7 +28,9 @@ from app.services.resolver.url_classifier import is_direct_media_url, is_youtube
 from app.services.downloader.audio_pipeline import acquire_audio, cleanup
 from app.services.downloader.ffmpeg_extractor import extract_audio_from_upload
 from app.services.downloader.binary_finder import find_ffmpeg
-from app.services.transcriber.caption_generator import generate_captions, generate_captions_from_url
+from app.services.transcriber.caption_generator import (
+    generate_captions, generate_captions_from_url, generate_aligned_srt,
+)
 from app.services.transcriber.mime_types import ext_to_mime
 
 logger = logging.getLogger(__name__)
@@ -230,10 +232,19 @@ def _prepare_upload(job_id, log, file_path, original_filename, is_video) -> str:
 def _transcribe(job_id, log, audio_path: str) -> str:
     size_mb = os.path.getsize(audio_path) / 1024 / 1024
     log(STEP_UPLOADING, f"Uploading {size_mb:.1f} MB to Gemini Files API...")
-    log(STEP_TRANSCRIBING, "Generating timestamped transcript with Gemini...")
-    # Verbatim, time-coded transcript (temperature 0). Returned as plain text so
-    # it is stored in Mongo/Redis exactly like any other transcript string.
-    return generate_captions(audio_path, fmt="text", log=lambda msg: log(STEP_TRANSCRIBING, msg))
+    step = lambda msg: log(STEP_TRANSCRIBING, msg)
+    # Best accuracy: Gemini writes the words, then forced alignment (aeneas)
+    # anchors each line to the audio for accurate timestamps. If alignment is
+    # unavailable/fails, fall back to Gemini's own (approximate) timestamps so a
+    # job still produces an SRT.
+    log(STEP_TRANSCRIBING, "Generating transcript (Gemini) + aligning timestamps...")
+    try:
+        return generate_aligned_srt(audio_path, log=step)
+    except Exception as exc:
+        logger.warning("Forced alignment failed (%s); using Gemini timestamps", exc)
+        log(STEP_TRANSCRIBING,
+            "Forced alignment unavailable — using Gemini's own timestamps.", level="warn")
+        return generate_captions(audio_path, fmt="srt", log=step)
 
 
 def _try_remote_media_transcription(
@@ -261,6 +272,7 @@ def _try_remote_media_transcription(
     transcript = generate_captions_from_url(
         media_url,
         mime,
+        fmt="srt",
         log=lambda msg: log(STEP_TRANSCRIBING, msg),
     )
     log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")

@@ -117,8 +117,47 @@ def generate_captions_from_url(
     return _generate_and_format(client, contents, fmt, log)
 
 
-def _generate_and_format(client, contents, fmt: str, log) -> str:
-    """Run Gemini with the caption prompt/schema and format the cues to `fmt`."""
+def generate_aligned_srt(
+    file_path: str,
+    language: str = "eng",
+    log: Callable[[str], None] | None = None,
+) -> str:
+    """Best-accuracy SRT: Gemini supplies the words, forced alignment (aeneas)
+    supplies the timestamps by anchoring each line to the audio waveform.
+
+    Raises if alignment is unavailable/fails so the caller can fall back to
+    Gemini's own (approximate) timestamps.
+    """
+    from app.services.aligner.aeneas_aligner import align_fragments_to_srt
+
+    cues = get_caption_cues(file_path, log)
+    fragments = [c["text"] for c in cues if c["text"].strip()]
+    return align_fragments_to_srt(file_path, fragments, language=language, log=log)
+
+
+def get_caption_cues(
+    file_path: str,
+    log: Callable[[str], None] | None = None,
+) -> list[dict]:
+    """Upload `file_path` and return Gemini's caption cues (start/end/speaker/text).
+
+    Exposed so the forced-alignment path can take just the *words* and re-time them
+    against the audio, ignoring Gemini's own (approximate) timestamps.
+    """
+    client = _client()
+    uploaded = upload_and_wait(client, file_path, log)
+    _log(log, "Gemini file ready — generating transcript text...")
+    try:
+        return _generate_cues(client, [CAPTION_PROMPT, uploaded], log)
+    finally:
+        try:
+            client.files.delete(name=uploaded.name)
+        except Exception:
+            pass
+
+
+def _generate_cues(client, contents, log) -> list[dict]:
+    """Run Gemini with the caption prompt/schema and return parsed cues."""
     response = client.models.generate_content(
         model=settings.GEMINI_MODEL,
         contents=contents,
@@ -141,7 +180,12 @@ def _generate_and_format(client, contents, fmt: str, log) -> str:
     if _was_truncated(response):
         _log(log, f"Gemini output hit the token limit; kept the first {len(cues)} "
                   f"cues. Very long recordings may transcribe only partially.")
+    return cues
 
+
+def _generate_and_format(client, contents, fmt: str, log) -> str:
+    """Run Gemini and format the cues to `fmt`."""
+    cues = _generate_cues(client, contents, log)
     _log(log, f"Formatting {len(cues)} caption cues as {fmt}...")
     return _FORMATTERS[fmt](cues)
 
@@ -229,12 +273,12 @@ def to_transcript_text(cues: list[dict]) -> str:
 
 
 def to_srt(cues: list[dict]) -> str:
-    """Format cues as SubRip (.srt)."""
+    """Format cues as SubRip (.srt) — index / start --> end / text, exactly the
+    shape a CivicClerk caption file uses. No speaker labels are added."""
     blocks = []
     for i, cue in enumerate(cues, 1):
         head = f"{_fmt_ts(cue['start'], ',')} --> {_fmt_ts(cue['end'], ',')}"
-        body = f"{cue['speaker']}: {cue['text']}" if cue["speaker"] else cue["text"]
-        blocks.append(f"{i}\n{head}\n{body}\n")
+        blocks.append(f"{i}\n{head}\n{cue['text']}\n")
     return "\n".join(blocks).strip() + "\n"
 
 
