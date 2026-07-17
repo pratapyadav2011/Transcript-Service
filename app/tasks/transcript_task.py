@@ -88,6 +88,16 @@ def transcribe_url_task(
         checkpoint(job_id)
         transcript = _transcribe(job_id, log, audio_path)
 
+        # Keep the downloaded audio so the transcription step can be rerun without
+        # re-downloading the (often large) media. Preserve BEFORE set_job_done so
+        # the final status stays DONE.
+        if settings.KEEP_AUDIO_FOR_RERUN and audio_path and os.path.exists(audio_path):
+            cached_path = _preserve_for_retry(job_id, audio_path, logger)
+            if cached_path:
+                audio_path = cached_path
+                preserve_audio = True
+                set_transcription_retry(job_id, audio_path, "keep")
+
         log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
         hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=url)
         set_job_done(job_id, transcript)
@@ -320,6 +330,8 @@ def _preserve_for_retry(job_id: str, audio_path: str, log: logging.Logger) -> st
 
 
 def _cleanup_cached_audio(audio_path: str, cleanup_mode: str) -> None:
+    if cleanup_mode == "keep":
+        return  # persistent rerun cache — only removed when the job is deleted
     if cleanup_mode == "temp":
         cleanup(audio_path)
         return

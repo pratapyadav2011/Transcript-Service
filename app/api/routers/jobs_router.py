@@ -134,21 +134,31 @@ def rerun_job(job_id: str):
 
 @router.post("/{job_id}/retry-transcription")
 def retry_transcription(job_id: str):
+    """Rerun only the transcription step using this job's cached audio.
+
+    Works for FAILED jobs (retry the failed step) and DONE jobs (re-verify the
+    transcript without re-downloading). For a persistent 'keep' cache the button
+    stays available so the step can be rerun repeatedly.
+    """
     job = _require_job(job_id)
-    if job.get("status") != "FAILED" or job.get("retryable") != "true":
-        raise HTTPException(status_code=409, detail="This job has no retryable transcription failure")
+    if job.get("retryable") != "true":
+        raise HTTPException(status_code=409, detail="This job has no cached audio to rerun")
     audio_path = job.get("retry_audio_path", "")
     if not audio_path or not os.path.isfile(audio_path):
         job_store.clear_transcription_retry(job_id)
-        raise HTTPException(status_code=410, detail="Preserved audio is no longer available; rerun the full job")
+        raise HTTPException(status_code=410, detail="Cached audio is no longer available; rerun the full job")
+    mode = job.get("retry_cleanup_mode", "temp")
     new_id = str(uuid.uuid4())
     job_store.create_job(
         job_id=new_id, source_type=job["source_type"], source=job["source"],
         meeting_id=job.get("meeting_id", ""), actor=job.get("actor", "system"),
     )
-    job_store.clear_transcription_retry(job_id)
+    # A one-shot failure cache is consumed; a persistent 'keep' cache stays so the
+    # step can be rerun again from this same job.
+    if mode != "keep":
+        job_store.clear_transcription_retry(job_id)
     retry_cached_audio_task.apply_async(
-        args=[new_id, audio_path, job.get("retry_cleanup_mode", "temp")],
+        args=[new_id, audio_path, mode],
         kwargs={"meeting_id": job.get("meeting_id", ""), "actor": job.get("actor", "system"), "source_label": job["source"]},
         task_id=new_id,
     )

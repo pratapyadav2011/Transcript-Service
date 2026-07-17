@@ -132,6 +132,10 @@ def generate_aligned_srt(
 
     cues = get_caption_cues(file_path, log)
     fragments = [c["text"] for c in cues if c["text"].strip()]
+    _log(log, f"Gemini transcribed {len(fragments)} lines; force-aligning to audio...")
+    if len(fragments) < 5:
+        _log(log, "Warning: Gemini returned very few lines — the audio may be "
+                  "near-silent, music, or only partially transcribed.")
     return align_fragments_to_srt(file_path, fragments, language=language, log=log)
 
 

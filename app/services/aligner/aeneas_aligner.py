@@ -19,10 +19,33 @@ import subprocess
 import tempfile
 from typing import Callable
 
+from app.services.downloader.binary_finder import find_ffmpeg
+
 logger = logging.getLogger(__name__)
 
 # aeneas can be slow on long audio; cap so a stuck run cannot hang a worker forever.
 _ALIGN_TIMEOUT_SEC = 1800
+
+
+def _to_wav(audio_path: str, out_dir: str) -> str:
+    """Transcode to 16 kHz mono PCM WAV so aeneas reads an exact duration.
+
+    aeneas estimates length from the header for VBR MP3s and can be off by many
+    multiples — which stretches the alignment across a bogus timeline. A PCM WAV
+    carries its exact length in the sample count, eliminating that.
+    """
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return audio_path  # aeneas will convert internally; less reliable
+    wav = os.path.join(out_dir, "align.wav")
+    proc = subprocess.run(
+        [ffmpeg, "-i", audio_path, "-vn", "-ac", "1", "-ar", "16000", "-y", wav],
+        capture_output=True, text=True, timeout=1200,
+    )
+    if proc.returncode != 0 or not os.path.exists(wav) or os.path.getsize(wav) == 0:
+        logger.warning("WAV transcode for alignment failed; using original audio")
+        return audio_path
+    return wav
 
 
 def align_fragments_to_srt(
@@ -42,6 +65,7 @@ def align_fragments_to_srt(
 
     tmp = tempfile.mkdtemp(prefix="transcript_align_")
     try:
+        wav_path = _to_wav(audio_path, tmp)
         text_path = os.path.join(tmp, "fragments.txt")
         srt_path = os.path.join(tmp, "aligned.srt")
         with open(text_path, "w", encoding="utf-8") as fh:
@@ -51,7 +75,7 @@ def align_fragments_to_srt(
         config = f"task_language={language}|is_text_type=plain|os_task_file_format=srt"
         args = [
             sys.executable, "-m", "aeneas.tools.execute_task",
-            audio_path, text_path, config, srt_path,
+            wav_path, text_path, config, srt_path,
         ]
 
         if log:

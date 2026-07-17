@@ -31,6 +31,12 @@ class Settings:
     # directly; set it only when a media CDN blocks the server's IP.
     MEDIA_PROXY_URL: str = os.getenv("MEDIA_PROXY_URL", "")
 
+    # Keep the downloaded audio after a successful job so the transcription step
+    # can be rerun (e.g. to verify prompt/alignment changes) without downloading
+    # the media again. Uses disk under UPLOAD_DIR/retry-cache; set to "false" to
+    # disable if disk is tight.
+    KEEP_AUDIO_FOR_RERUN: bool = os.getenv("KEEP_AUDIO_FOR_RERUN", "true").lower() == "true"
+
     # API key for Next.js → Python service calls
     API_SECRET_KEY: str = os.getenv("API_SECRET_KEY", "")
 
