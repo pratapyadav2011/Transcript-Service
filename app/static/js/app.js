@@ -41,6 +41,28 @@ async function copyTranscript() {
   }
 }
 
+async function downloadTranscript() {
+  const jobIdEl = document.querySelector('.job-id');
+  if (!jobIdEl) return;
+  const jobId = jobIdEl.textContent.trim();
+  try {
+    const res = await fetch(`/api/jobs/${jobId}/transcript`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Transcript could not be loaded');
+    const blob = new Blob([data.transcript], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcript-${jobId.slice(0, 8)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Download failed: ' + err.message);
+  }
+}
+
 async function submitUrlForm(event) {
   event.preventDefault();
   const form = event.target;

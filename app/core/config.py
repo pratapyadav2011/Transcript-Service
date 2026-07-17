@@ -37,6 +37,11 @@ class Settings:
     # disable if disk is tight.
     KEEP_AUDIO_FOR_RERUN: bool = os.getenv("KEEP_AUDIO_FOR_RERUN", "true").lower() == "true"
 
+    # Long audio is split into chunks of this many minutes before transcription —
+    # Gemini can't transcribe multi-hour audio in one request. Each chunk is
+    # transcribed and force-aligned independently, then stitched with its offset.
+    TRANSCRIBE_CHUNK_MINUTES: int = int(os.getenv("TRANSCRIBE_CHUNK_MINUTES", "30"))
+
     # API key for Next.js → Python service calls
     API_SECRET_KEY: str = os.getenv("API_SECRET_KEY", "")
 

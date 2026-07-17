@@ -12,6 +12,7 @@ one fragment per line, and produces an SRT directly.
 """
 from __future__ import annotations
 import os
+import re
 import sys
 import shutil
 import logging
@@ -22,6 +23,11 @@ from typing import Callable
 from app.services.downloader.binary_finder import find_ffmpeg
 
 logger = logging.getLogger(__name__)
+
+# "00:00:03,203 --> 00:00:05,110" (SRT) or with '.' (VTT).
+_SRT_TIME_RE = re.compile(
+    r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})"
+)
 
 # aeneas can be slow on long audio; cap so a stuck run cannot hang a worker forever.
 _ALIGN_TIMEOUT_SEC = 1800
@@ -46,6 +52,37 @@ def _to_wav(audio_path: str, out_dir: str) -> str:
         logger.warning("WAV transcode for alignment failed; using original audio")
         return audio_path
     return wav
+
+
+def align_fragments_to_cues(
+    audio_path: str,
+    fragments: list[str],
+    language: str = "eng",
+    log: Callable[[str], None] | None = None,
+) -> list[dict]:
+    """Force-align `fragments` to `audio_path` and return cues [{start,end,text}].
+
+    Used by the chunked pipeline, which offsets each chunk's cues by the chunk's
+    start time before stitching. Raises on failure so the caller can fall back.
+    """
+    return _parse_srt(align_fragments_to_srt(audio_path, fragments, language, log))
+
+
+def _parse_srt(srt: str) -> list[dict]:
+    """Parse SRT text into [{start, end, text}] with times in seconds."""
+    cues: list[dict] = []
+    for block in re.split(r"\n\s*\n", srt.strip()):
+        rows = [r for r in block.splitlines() if r.strip()]
+        time_idx = next((i for i, r in enumerate(rows) if _SRT_TIME_RE.search(r)), None)
+        if time_idx is None:
+            continue
+        m = _SRT_TIME_RE.search(rows[time_idx])
+        start = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3)) + int(m.group(4)) / 1000
+        end = int(m.group(5)) * 3600 + int(m.group(6)) * 60 + int(m.group(7)) + int(m.group(8)) / 1000
+        text = " ".join(r.strip() for r in rows[time_idx + 1:]).strip()
+        if text:
+            cues.append({"start": start, "end": end, "text": text})
+    return cues
 
 
 def align_fragments_to_srt(
