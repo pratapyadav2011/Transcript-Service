@@ -28,6 +28,45 @@ Code is modular (SOLID, one responsibility per file, every file < 200 lines).
 
 `QUEUED → RESOLVING (search) → FOUND → DOWNLOADING / EXTRACTING → UPLOADING → TRANSCRIBING → SAVING → DONE`
 
+## Local CPU transcription with faster-whisper
+
+The service can generate CivicClerk-style SRT locally from faster-whisper word
+timestamps. Local jobs run on a dedicated `whisper` Celery queue with concurrency
+1 so multiple long meetings do not fight for the same CPU.
+
+Configure `.env`:
+
+```env
+# gemini | whisper | whisper_gemini_fallback
+TRANSCRIPTION_ENGINE=whisper
+WHISPER_MODEL=small.en
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE_TYPE=int8
+WHISPER_CPU_THREADS=8
+WHISPER_BATCH_SIZE=8
+WHISPER_BEAM_SIZE=1
+WHISPER_LANGUAGE=en
+WHISPER_MODEL_DIR=/models/whisper
+WHISPER_INITIAL_PROMPT=Pensacola, CivicClerk
+```
+
+- `whisper` keeps transcription fully local and fails if local ASR fails.
+- `whisper_gemini_fallback` is available for automatic fallback, but is not the
+  default. With `whisper`, Gemini runs only when a user clicks **Try with Gemini**
+  on a job that has cached audio.
+- `gemini` preserves the existing Gemini and caption fast paths.
+
+The first Whisper job downloads the configured model into the persistent
+`whisper-models` Docker volume. Start the complete stack with:
+
+```bash
+docker compose up -d --build
+```
+
+For an 8-core CPU, start with 8 threads, batch size 8, beam size 1, and only one
+Whisper worker process. Benchmark a 10-minute meeting excerpt before estimating
+multi-hour production jobs.
+
 **YouTube fast-path:** if a YouTube video already has a caption track, the
 transcript is pulled directly (free, instant) via `youtube-transcript-api` and
 the audio-download + Gemini steps are skipped. Anything without captions
@@ -133,7 +172,8 @@ redirect(`https://transcripts.example.com/?token=${makeTranscriptToken(28800)}`)
 | POST   | `/api/jobs/{id}/resume`    | Resume a paused job              |
 | POST   | `/api/jobs/{id}/stop`      | Stop a job                       |
 | POST   | `/api/jobs/{id}/rerun`     | Requeue a URL job                |
-| POST   | `/api/jobs/{id}/retry-transcription` | Retry Gemini using preserved audio after a temporary 503 |
+| POST   | `/api/jobs/{id}/retry-transcription` | Retry cached audio with local Whisper |
+| POST   | `/api/jobs/{id}/retry-gemini` | Explicitly transcribe cached audio with Gemini |
 | DELETE | `/api/jobs/{id}`           | Delete a job                     |
 
 ## Notes on pause/stop

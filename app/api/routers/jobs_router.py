@@ -15,6 +15,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from app.core.celery_app import celery_app
+from app.core.config import transcription_queue
 from app.core import job_store
 from app.core.job_store import (
     set_control, clear_control, set_job_stopped,
@@ -24,6 +25,11 @@ from app.tasks.transcript_task import transcribe_url_task, retry_cached_audio_ta
 from app.tasks import hooks
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+def _queue_options(engine: str | None = None) -> dict:
+    queue = transcription_queue(engine)
+    return {"queue": queue} if queue else {}
 
 
 def _require_job(job_id: str) -> dict:
@@ -128,6 +134,7 @@ def rerun_job(job_id: str):
             "actor": job.get("actor", "system"),
         },
         task_id=new_id,
+        **_queue_options(),
     )
     return {"status": "queued", "job_id": new_id, "rerun_of": job_id}
 
@@ -159,10 +166,49 @@ def retry_transcription(job_id: str):
         job_store.clear_transcription_retry(job_id)
     retry_cached_audio_task.apply_async(
         args=[new_id, audio_path, mode],
-        kwargs={"meeting_id": job.get("meeting_id", ""), "actor": job.get("actor", "system"), "source_label": job["source"]},
+        kwargs={
+            "meeting_id": job.get("meeting_id", ""),
+            "actor": job.get("actor", "system"),
+            "source_label": job["source"],
+            "engine_override": "whisper",
+        },
         task_id=new_id,
+        **_queue_options("whisper"),
     )
     return {"status": "queued", "job_id": new_id, "retry_of": job_id}
+
+
+@router.post("/{job_id}/retry-gemini")
+def retry_with_gemini(job_id: str):
+    """Explicitly transcribe cached audio with Gemini; never selected automatically."""
+    job = _require_job(job_id)
+    if job.get("retryable") != "true":
+        raise HTTPException(status_code=409, detail="This job has no cached audio for Gemini")
+    audio_path = job.get("retry_audio_path", "")
+    if not audio_path or not os.path.isfile(audio_path):
+        job_store.clear_transcription_retry(job_id)
+        raise HTTPException(status_code=410, detail="Cached audio is no longer available; rerun the full job")
+
+    mode = job.get("retry_cleanup_mode", "temp")
+    new_id = str(uuid.uuid4())
+    job_store.create_job(
+        job_id=new_id, source_type=job["source_type"], source=job["source"],
+        meeting_id=job.get("meeting_id", ""), actor=job.get("actor", "system"),
+    )
+    if mode != "keep":
+        job_store.clear_transcription_retry(job_id)
+    retry_cached_audio_task.apply_async(
+        args=[new_id, audio_path, mode],
+        kwargs={
+            "meeting_id": job.get("meeting_id", ""),
+            "actor": job.get("actor", "system"),
+            "source_label": job["source"],
+            "engine_override": "gemini",
+        },
+        task_id=new_id,
+        **_queue_options("gemini"),
+    )
+    return {"status": "queued", "job_id": new_id, "retry_of": job_id, "engine": "gemini"}
 
 
 @router.delete("/{job_id}")

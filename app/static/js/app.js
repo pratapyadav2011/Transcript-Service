@@ -119,6 +119,18 @@ async function retryTranscription(jobId) {
   }
 }
 
+async function retryWithGemini(jobId) {
+  if (!confirm('Send the cached audio to Gemini for transcription?')) return;
+  try {
+    const res = await fetch(`/api/jobs/${jobId}/retry-gemini`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Gemini transcription failed to start');
+    goToJob(data.job_id);
+  } catch (err) {
+    alert('Gemini transcription failed to start: ' + err.message);
+  }
+}
+
 // On the job-detail page, reload after a pause/resume/stop so the header
 // buttons reflect the new state (the status badge already polls live).
 document.body.addEventListener('htmx:afterRequest', (e) => {

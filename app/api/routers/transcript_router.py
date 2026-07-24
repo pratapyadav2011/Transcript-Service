@@ -10,13 +10,18 @@ import logging
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, AnyHttpUrl
 
-from app.core.config import settings
+from app.core.config import settings, transcription_queue
 from app.core import job_store
 from app.services import mongo_writer
 from app.tasks.transcript_task import transcribe_url_task, transcribe_upload_task
 
 router = APIRouter(prefix="/api/transcript", tags=["transcript"])
 logger = logging.getLogger(__name__)
+
+
+def _queue_options() -> dict:
+    queue = transcription_queue()
+    return {"queue": queue} if queue else {}
 
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v",
@@ -56,6 +61,7 @@ def submit_meeting(body: MeetingRequest):
         args=[job_id, url],
         kwargs={"meeting_id": body.meeting_id, "actor": body.actor},
         task_id=job_id,
+        **_queue_options(),
     )
     logger.info("Meeting job queued: %s → meeting %s → %s", job_id, body.meeting_id, url)
     return {"job_id": job_id, "status": "queued", "meeting_id": body.meeting_id, "url": url}
@@ -78,6 +84,7 @@ def submit_url(body: UrlRequest):
             "actor": body.actor,
         },
         task_id=job_id,
+        **_queue_options(),
     )
     logger.info("URL job queued: %s → %s", job_id, body.url)
     return {"job_id": job_id, "status": "queued"}
@@ -118,6 +125,7 @@ async def submit_upload(
             "actor": actor,
         },
         task_id=job_id,
+        **_queue_options(),
     )
     logger.info("Upload job queued: %s → %s (video=%s)", job_id, file.filename, is_video)
     return {"job_id": job_id, "status": "queued", "is_video": is_video}

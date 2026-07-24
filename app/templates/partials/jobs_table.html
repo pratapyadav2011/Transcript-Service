@@ -35,7 +35,9 @@
                   hx-confirm="Stop this job?" hx-swap="none">⏹ Stop</button>
         {% elif job.retryable == 'true' %}
           <button class="btn btn-xs btn-success"
-                  onclick="retryTranscription('{{ job.job_id }}')">↻ Rerun transcription</button>
+                  onclick="retryTranscription('{{ job.job_id }}')">↻ Retry Whisper</button>
+          <button class="btn btn-xs btn-warn"
+                  onclick="retryWithGemini('{{ job.job_id }}')">✦ Gemini</button>
           {% if job.source_type == 'url' %}
           <button class="btn btn-xs btn-secondary"
                   onclick="rerunJob('{{ job.job_id }}')">↻ Full rerun</button>

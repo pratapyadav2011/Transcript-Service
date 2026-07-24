@@ -27,12 +27,27 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=${WORKER_CONCURRENCY:-4}
+    command: celery -A app.core.celery_app worker --loglevel=info --queues=celery --concurrency=${WORKER_CONCURRENCY:-4}
     depends_on:
       - redis
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs
+
+  whisper-worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      OMP_NUM_THREADS: ${WHISPER_CPU_THREADS:-8}
+    command: celery -A app.core.celery_app worker --loglevel=info --queues=whisper --concurrency=1
+    depends_on:
+      - redis
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - whisper-models:/models/whisper
 
   flower:
     build: .
@@ -48,3 +63,4 @@ services:
 
 volumes:
   redis-data:
+  whisper-models:
