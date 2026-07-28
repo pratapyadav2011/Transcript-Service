@@ -37,6 +37,21 @@ def _header_variants(referer: str | None) -> list[dict[str, str]]:
     return variants
 
 
+def _granicus_referer(url: str) -> str | None:
+    """Derive the tenant player origin required by Granicus anti-hotlinking.
+
+    Direct archive-video URLs use their first path segment as the tenant name,
+    e.g. /danville-ca/file.mp4 -> https://danville-ca.granicus.com/.
+    """
+    parsed = urlparse(url)
+    if parsed.hostname != "archive-video.granicus.com":
+        return None
+    tenant = next((part for part in parsed.path.split("/") if part), "")
+    if not tenant or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789-" for char in tenant.lower()):
+        return None
+    return f"https://{tenant.lower()}.granicus.com/"
+
+
 def download_direct(
     url: str,
     progress_callback: Callable[[str], None] | None = None,
@@ -56,7 +71,8 @@ def download_direct(
     logger.info("Downloading direct media: %s", url)
 
     last_error: Exception | None = None
-    for headers in _header_variants(referer if referer != url else None):
+    effective_referer = referer if referer and referer != url else _granicus_referer(url)
+    for headers in _header_variants(effective_referer):
         try:
             with requests.get(url, headers=headers, stream=True, timeout=300) as resp:
                 resp.raise_for_status()
