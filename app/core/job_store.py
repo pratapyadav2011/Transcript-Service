@@ -63,6 +63,27 @@ def _transcript_key(job_id: str) -> str:
     return f"job:{job_id}:transcript"
 
 
+def _delivery_key(job_id: str) -> str:
+    return f"job:{job_id}:deliveries"
+
+
+def register_delivery(job_id: str) -> int:
+    """Count how many times the broker has handed this task to a worker.
+
+    With task_acks_late + task_reject_on_worker_lost, a worker killed mid-task
+    (typically an OOM SIGKILL on very long audio) leaves the message unacked, so
+    the broker redelivers it and the job restarts from step one — forever if the
+    crash is deterministic. Tasks call this on entry and give up once the count
+    exceeds a threshold, breaking the loop. Each API (re)dispatch uses a fresh
+    job_id, so a deliberate retry always starts from a clean count. Returns the
+    new attempt number (1 on the first delivery)."""
+    r = get_redis()
+    key = _delivery_key(job_id)
+    count = r.incr(key)
+    r.expire(key, TTL)
+    return count
+
+
 def create_job(
     job_id: str,
     source_type: str,       # "url" | "upload"
@@ -218,5 +239,6 @@ def delete_job(job_id: str) -> None:
     pipe.delete(_log_key(job_id))
     pipe.delete(_control_key(job_id))
     pipe.delete(_transcript_key(job_id))
+    pipe.delete(_delivery_key(job_id))
     pipe.zrem("jobs:index", job_id)
     pipe.execute()

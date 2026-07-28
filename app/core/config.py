@@ -29,9 +29,31 @@ class Settings:
     YTDLP_PATH: str = os.getenv("YTDLP_PATH", "")
     FFMPEG_PATH: str = os.getenv("FFMPEG_PATH", "")
 
-    # Optional HTTP/SOCKS proxy for yt-dlp subtitle fetches. Leave empty to fetch
-    # directly; set it only when a media CDN blocks the server's IP.
+    # Optional HTTP/SOCKS proxy for yt-dlp (subtitle fetches AND audio download).
+    # Leave empty to fetch directly; set it when a CDN/YouTube blocks the server IP.
     MEDIA_PROXY_URL: str = os.getenv("MEDIA_PROXY_URL", "")
+
+    # Path to a Netscape-format cookies.txt exported from a browser logged in to
+    # YouTube. Required because YouTube blocks datacenter/VM IPs with "Sign in to
+    # confirm you're not a bot". Point this at a file on a mounted volume.
+    YTDLP_COOKIES_FILE: str = os.getenv("YTDLP_COOKIES_FILE", "")
+
+    # Alternative to a cookies file: pull cookies straight from a locally installed
+    # browser, e.g. "chrome", "firefox", or "firefox:/path/to/profile". Only works
+    # if that browser profile lives on the same host as the worker. Ignored when
+    # YTDLP_COOKIES_FILE is set (a file takes precedence).
+    YTDLP_COOKIES_FROM_BROWSER: str = os.getenv("YTDLP_COOKIES_FROM_BROWSER", "")
+
+    # yt-dlp YouTube player clients to try, passed as
+    # --extractor-args "youtube:player_client=<value>". yt-dlp aggregates formats
+    # across the listed clients: `default` keeps the audio-only DASH streams (best
+    # for speech), while tv / web_safari / mweb are fallbacks that often dodge the
+    # PO-token + bot wall the web client hits from datacenter IPs. Order matters —
+    # keep `default` first so audio-only formats stay preferred when it works.
+    # Comma-separated. Empty = leave yt-dlp's own default.
+    YTDLP_PLAYER_CLIENT: str = os.getenv(
+        "YTDLP_PLAYER_CLIENT", "default,tv,web_safari,mweb"
+    )
 
     # Keep the downloaded audio after a successful job so the transcription step
     # can be rerun (e.g. to verify prompt/alignment changes) without downloading
@@ -51,11 +73,30 @@ class Settings:
     WHISPER_DEVICE: str = os.getenv("WHISPER_DEVICE", "cpu")
     WHISPER_COMPUTE_TYPE: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
     WHISPER_CPU_THREADS: int = int(os.getenv("WHISPER_CPU_THREADS", "8"))
-    WHISPER_BATCH_SIZE: int = int(os.getenv("WHISPER_BATCH_SIZE", "8"))
+    # Peak RAM scales with batch size. On CPU int8 a larger batch mostly trades
+    # memory for a little throughput, and multi-hour audio + word timestamps can
+    # OOM-kill the worker. Keep this modest; raise only if the box has headroom.
+    WHISPER_BATCH_SIZE: int = int(os.getenv("WHISPER_BATCH_SIZE", "4"))
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
     WHISPER_LANGUAGE: str = os.getenv("WHISPER_LANGUAGE", "en")
     WHISPER_MODEL_DIR: str = os.getenv("WHISPER_MODEL_DIR", "/models/whisper")
     WHISPER_INITIAL_PROMPT: str = os.getenv("WHISPER_INITIAL_PROMPT", "")
+
+    # Give up on a task after this many broker deliveries. task_acks_late means a
+    # worker killed mid-task (e.g. OOM SIGKILL) has its message redelivered and the
+    # job restarts from scratch; without a cap a deterministic crash loops forever.
+    # 2 tolerates one benign worker loss (deploy/restart) before failing the job.
+    MAX_TASK_DELIVERIES: int = int(os.getenv("MAX_TASK_DELIVERIES", "2"))
+
+    # Recycle a worker child once its resident memory exceeds this (MB) — a
+    # belt-and-suspenders guard against gradual leaks across tasks. 0 disables.
+    # It does NOT stop a single task from OOMing; the delivery cap handles that.
+    WORKER_MAX_MEMORY_MB: int = int(os.getenv("WORKER_MAX_MEMORY_MB", "0"))
+
+    # Master switch for the auth middleware. Disable only for trusted/local use.
+    AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() in {
+        "1", "true", "yes", "on",
+    }
 
     # API key for Next.js → Python service calls
     API_SECRET_KEY: str = os.getenv("API_SECRET_KEY", "")

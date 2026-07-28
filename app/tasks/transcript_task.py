@@ -17,7 +17,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.job_store import (
     set_job_done, set_job_failed, set_job_stopped, clear_control, set_transcript_id,
-    set_transcription_retry, clear_transcription_retry,
+    set_transcription_retry, clear_transcription_retry, register_delivery,
     STEP_RESOLVING, STEP_FOUND, STEP_DOWNLOADING,
     STEP_EXTRACTING, STEP_UPLOADING, STEP_TRANSCRIBING, STEP_SAVING, STEP_FAILED,
 )
@@ -51,6 +51,8 @@ def transcribe_url_task(
     audio_path: str | None = None
     preserve_audio = False
     try:
+        if _abort_if_crash_looping(job_id, log, meeting_id, actor):
+            return {"status": "failed", "reason": "too_many_deliveries"}
         transcript_id = _begin(job_id, meeting_id)
 
         checkpoint(job_id)
@@ -147,6 +149,8 @@ def transcribe_upload_task(
     audio_path: str | None = None
     preserve_audio = False
     try:
+        if _abort_if_crash_looping(job_id, log, meeting_id, actor):
+            return {"status": "failed", "reason": "too_many_deliveries"}
         transcript_id = _begin(job_id, meeting_id)
 
         checkpoint(job_id)
@@ -199,6 +203,12 @@ def retry_cached_audio_task(
     log = make_logger(job_id, logger)
     preserve_audio = False
     try:
+        if _abort_if_crash_looping(job_id, log, meeting_id, actor):
+            # Keep the cached audio so the failure is recoverable, not the finally's default delete.
+            if os.path.isfile(audio_path):
+                preserve_audio = True
+                set_transcription_retry(job_id, audio_path, cleanup_mode)
+            return {"status": "failed", "reason": "too_many_deliveries"}
         if not os.path.isfile(audio_path):
             raise RuntimeError("Preserved audio is no longer available; rerun the full job.")
         transcript_id = _begin(job_id, meeting_id)
@@ -324,6 +334,28 @@ def _try_remote_media_transcription(
     hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_url)
     set_job_done(job_id, transcript)
     return {"status": "done", "transcript": transcript, "source": "gemini_url"}
+
+
+def _abort_if_crash_looping(job_id, log, meeting_id, actor) -> bool:
+    """Break the acks_late redelivery loop for a task that keeps killing its worker.
+
+    A worker killed mid-task (usually OOM-SIGKILL on very long audio) leaves the
+    message unacked, so the broker redelivers it and the job restarts from step
+    one. We count deliveries per task; once a job burns through MAX_TASK_DELIVERIES
+    attempts we fail it and signal the caller to return, so Celery ACKs the message
+    and the loop stops. Each API (re)dispatch uses a fresh job_id, so a deliberate
+    retry always starts from a clean count."""
+    attempt = register_delivery(job_id)
+    if attempt > settings.MAX_TASK_DELIVERIES:
+        _fail(
+            job_id,
+            f"Gave up after {settings.MAX_TASK_DELIVERIES} attempt(s): the worker was "
+            "repeatedly killed mid-task (most likely out of memory on very long audio). "
+            "Not retrying to avoid an infinite loop.",
+            meeting_id, actor, log,
+        )
+        return True
+    return False
 
 
 def _fail(job_id, error_msg, meeting_id, actor, log) -> None:

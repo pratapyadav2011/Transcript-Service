@@ -42,6 +42,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       OMP_NUM_THREADS: ${WHISPER_CPU_THREADS:-8}
     command: celery -A app.core.celery_app worker --loglevel=info --queues=whisper --concurrency=1
+    # Cap RAM so an over-long-audio transcription is killed cleanly instead of
+    # thrashing/OOM-killing other services on the host. The delivery cap in the
+    # app then fails the job rather than looping. Size this to the host's memory.
+    mem_limit: ${WHISPER_MEM_LIMIT:-4g}
+    mem_reservation: ${WHISPER_MEM_RESERVATION:-2g}
     depends_on:
       - redis
     volumes:

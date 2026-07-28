@@ -7,6 +7,7 @@ import tempfile
 from collections import deque
 from typing import Callable
 
+from app.core.config import settings
 from app.services.downloader.binary_finder import find_ffmpeg
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,25 @@ def download_audio(
     if ffmpeg:
         args[1:1] = ["--ffmpeg-location", ffmpeg]
 
+    # Prefer YouTube player clients that usually dodge the PO-token / bot wall that
+    # the default web client hits from datacenter IPs. Namespaced to the youtube
+    # extractor, so it's a harmless no-op for other sites.
+    if settings.YTDLP_PLAYER_CLIENT:
+        args[1:1] = [
+            "--extractor-args",
+            f"youtube:player_client={settings.YTDLP_PLAYER_CLIENT}",
+        ]
+
+    # YouTube blocks datacenter/VM IPs ("confirm you're not a bot"). Cookies (from a
+    # file or a local browser) and/or a residential proxy get past it. A cookies
+    # file wins over browser extraction when both are set.
+    if settings.YTDLP_COOKIES_FILE and os.path.isfile(settings.YTDLP_COOKIES_FILE):
+        args[1:1] = ["--cookies", settings.YTDLP_COOKIES_FILE]
+    elif settings.YTDLP_COOKIES_FROM_BROWSER:
+        args[1:1] = ["--cookies-from-browser", settings.YTDLP_COOKIES_FROM_BROWSER]
+    if settings.MEDIA_PROXY_URL:
+        args[1:1] = ["--proxy", settings.MEDIA_PROXY_URL]
+
     if progress_callback:
         progress_callback(f"Running yt-dlp on: {url}")
 
@@ -76,6 +96,22 @@ def download_audio(
     process.wait()
     if process.returncode != 0:
         reason = " | ".join(l for l in tail if "ERROR" in l or "WARNING" in l) or " / ".join(tail)
+        # YouTube's bot wall surfaces as a "confirm you're not a bot" /
+        # "Requested format is not available" pair (the latter is downstream — no
+        # formats get extracted). Point the operator at the real remedy instead of
+        # a cryptic exit code + format error.
+        lowered = reason.lower()
+        if "not a bot" in lowered or "sign in to confirm" in lowered or (
+            "requested format is not available" in lowered
+            and not settings.YTDLP_COOKIES_FILE
+            and not settings.YTDLP_COOKIES_FROM_BROWSER
+        ):
+            raise RuntimeError(
+                "yt-dlp was blocked by YouTube's bot check (datacenter/VM IP). "
+                "Set YTDLP_COOKIES_FILE (or YTDLP_COOKIES_FROM_BROWSER) from a "
+                "logged-in account, add MEDIA_PROXY_URL (residential), and update "
+                f"yt-dlp. Details: {reason[:300]}"
+            )
         raise RuntimeError(f"yt-dlp exited with code {process.returncode}: {reason[:400]}")
 
     # Find the produced file — prefer the extracted audio over any leftover.

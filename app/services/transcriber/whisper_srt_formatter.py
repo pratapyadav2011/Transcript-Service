@@ -17,7 +17,19 @@ def segments_to_srt(
     max_cue_seconds: float = 7.0,
     preferred_cue_seconds: float = 3.5,
 ) -> str:
-    words = _timed_words(segments)
+    return words_to_srt(
+        _timed_words(segments), max_line_chars, max_cue_seconds, preferred_cue_seconds
+    )
+
+
+def words_to_srt(
+    words: list[TimedWord],
+    max_line_chars: int = 42,
+    max_cue_seconds: float = 7.0,
+    preferred_cue_seconds: float = 3.5,
+) -> str:
+    """Build a full SRT from a flat, time-ordered list of words. Used both for a
+    single pass and for stitching per-chunk words (already offset) from long audio."""
     cues = _build_cues(words, max_line_chars, max_cue_seconds, preferred_cue_seconds)
     if not cues:
         raise RuntimeError("Whisper returned no spoken words.")
@@ -29,6 +41,15 @@ def segments_to_srt(
             f"{index}\n{_timestamp(cue[0])} --> {_timestamp(cue[1])}\n{lines}"
         )
     return "\n\n".join(blocks).strip() + "\n"
+
+
+def timed_words_from_segments(segments, offset: float = 0.0) -> list[TimedWord]:
+    """Flatten faster-whisper segments to words, shifting every timestamp by
+    `offset` seconds so a chunk's words land at their absolute position."""
+    words = _timed_words(segments)
+    if not offset:
+        return words
+    return [TimedWord(w.start + offset, w.end + offset, w.text) for w in words]
 
 
 def _timed_words(segments) -> list[TimedWord]:

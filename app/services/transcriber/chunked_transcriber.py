@@ -11,16 +11,14 @@ If alignment fails for a chunk, that chunk falls back to Gemini's own (rougher,
 but chunk-local) timestamps — still offset correctly by the chunk start.
 """
 from __future__ import annotations
-import os
-import glob
 import shutil
 import logging
-import subprocess
 import tempfile
 from typing import Callable
 
 from app.core.config import settings
 from app.services.downloader.binary_finder import find_ffmpeg
+from app.services.transcriber.audio_chunking import split_audio, probe_duration, hms
 from app.services.transcriber.caption_generator import get_caption_cues, to_srt
 from app.services.aligner.aeneas_aligner import align_fragments_to_cues
 
@@ -80,42 +78,18 @@ def generate_chunked_aligned_srt(
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# Audio splitting/duration helpers live in audio_chunking (shared with the local
+# Whisper chunked path). Thin wrappers keep this module's call sites unchanged.
 def _split_audio(ffmpeg: str, file_path: str, chunk_seconds: int, out_dir: str, log) -> list[str]:
-    pattern = os.path.join(out_dir, "chunk_%04d.mp3")
-    _log(log, f"Splitting audio into {chunk_seconds // 60}-minute chunks...")
-    proc = subprocess.run(
-        [
-            ffmpeg, "-i", file_path, "-vn",
-            "-f", "segment", "-segment_time", str(chunk_seconds),
-            "-c", "copy", "-y", pattern,
-        ],
-        capture_output=True, text=True, timeout=3600,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"Audio splitting failed: {(proc.stderr or '')[-400:]}")
-    chunks = sorted(glob.glob(os.path.join(out_dir, "chunk_*.mp3")))
-    if not chunks:
-        raise RuntimeError("Audio splitting produced no chunks")
-    return chunks
+    return split_audio(file_path, chunk_seconds, out_dir, log)
 
 
 def _duration(ffmpeg: str, path: str) -> float | None:
-    d = os.path.dirname(ffmpeg)
-    ffprobe = os.path.join(d, "ffprobe") if d else "ffprobe"
-    try:
-        out = subprocess.run(
-            [ffprobe, "-v", "error", "-show_entries", "format=duration",
-             "-of", "csv=p=0", path],
-            capture_output=True, text=True, timeout=60,
-        )
-        return float(out.stdout.strip())
-    except Exception:
-        return None
+    return probe_duration(path)
 
 
 def _hms(seconds: float) -> str:
-    s = int(seconds)
-    return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+    return hms(seconds)
 
 
 def _log(log: Callable[[str], None] | None, msg: str) -> None:

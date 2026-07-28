@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import tempfile
 from typing import Callable
 
 from app.core.config import settings
-from app.services.transcriber.whisper_srt_formatter import segments_to_srt
+from app.services.transcriber.audio_chunking import split_audio, probe_duration, hms
+from app.services.transcriber.whisper_srt_formatter import (
+    segments_to_srt, words_to_srt, timed_words_from_segments,
+)
 
 logger = logging.getLogger(__name__)
 _model = None
@@ -42,12 +47,30 @@ def transcribe_to_srt(
     file_path: str,
     log: Callable[[str], None] | None = None,
 ) -> str:
-    pipeline = _load_pipeline()
+    """Transcribe `file_path` to SRT. faster-whisper decodes the whole file into
+    RAM before inference, so multi-hour audio is split into chunks and stitched —
+    otherwise the worker OOMs. Short audio takes the single-pass route unchanged."""
     _log(
         log,
         f"Running local Whisper model {settings.WHISPER_MODEL} "
         f"({settings.WHISPER_DEVICE} {settings.WHISPER_COMPUTE_TYPE})...",
     )
+    chunk_seconds = max(0, settings.TRANSCRIBE_CHUNK_MINUTES) * 60
+    duration = probe_duration(file_path) or 0.0
+    # Only chunk when clearly long, so typical short files keep the exact
+    # single-pass behavior (and cross-chunk boundary effects are avoided).
+    if chunk_seconds and duration > chunk_seconds * 1.5:
+        return _transcribe_chunked(file_path, chunk_seconds, duration, log)
+
+    segments = _transcribe_segments(file_path, log)
+    result = segments_to_srt(segments)
+    _log(log, f"Local Whisper produced {result.count('-->')} caption cues.")
+    return result
+
+
+def _transcribe_segments(file_path: str, log: Callable[[str], None] | None) -> list:
+    """Run the model on one file and return its materialized segment list."""
+    pipeline = _load_pipeline()
     kwargs = dict(
         language=settings.WHISPER_LANGUAGE or None,
         batch_size=settings.WHISPER_BATCH_SIZE,
@@ -72,10 +95,47 @@ def transcribe_to_srt(
             else:
                 _log(log, f"Whisper processed {position / 60:.0f} minutes of audio")
             next_progress += 300.0
-    _log(log, f"Whisper detected {info.language}; formatting {len(segments)} segments as SRT...")
-    result = segments_to_srt(segments)
-    _log(log, f"Local Whisper produced {result.count('-->')} caption cues.")
-    return result
+    _log(log, f"Whisper detected {info.language}; {len(segments)} segments.")
+    return segments
+
+
+def _transcribe_chunked(
+    file_path: str,
+    chunk_seconds: int,
+    total_duration: float,
+    log: Callable[[str], None] | None,
+) -> str:
+    """Split long audio, transcribe each chunk (bounding peak RAM to one chunk),
+    offset each chunk's words by its start time, and stitch into one SRT."""
+    tmp = tempfile.mkdtemp(prefix="whisper_chunks_")
+    try:
+        chunks = split_audio(file_path, chunk_seconds, tmp, log)
+        _log(
+            log,
+            f"Long audio ({total_duration / 60:.0f} min): transcribing in "
+            f"{len(chunks)} chunk(s) of ~{chunk_seconds // 60} min to bound memory.",
+        )
+        all_words = []
+        offset = 0.0
+        for i, chunk in enumerate(chunks, 1):
+            chunk_duration = probe_duration(chunk) or float(chunk_seconds)
+            _log(
+                log,
+                f"Chunk {i}/{len(chunks)} [{hms(offset)}–{hms(offset + chunk_duration)}]: "
+                "transcribing...",
+            )
+            segments = _transcribe_segments(chunk, log)
+            all_words.extend(timed_words_from_segments(segments, offset=offset))
+            del segments  # release the chunk's segments before decoding the next
+            offset += chunk_duration
+        if not all_words:
+            raise RuntimeError("Whisper produced no words from any chunk")
+        _log(log, f"Stitching {len(all_words)} words across {len(chunks)} chunks into SRT...")
+        result = words_to_srt(all_words)
+        _log(log, f"Local Whisper produced {result.count('-->')} caption cues.")
+        return result
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _log(callback, message: str) -> None:

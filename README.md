@@ -112,10 +112,15 @@ celery -A app.core.celery_app flower --port=5555
 The whole service is gated by a single shared secret, `API_SECRET_KEY`. There
 are no user accounts — your website is the only thing that can let people in.
 
-1. Set a strong secret in `.env`: `API_SECRET_KEY=$(openssl rand -hex 32)`.
+1. Set `AUTH_ENABLED=true` and a strong secret in `.env`:
+   `API_SECRET_KEY=$(openssl rand -hex 32)`.
 2. Put the **same value** in your website's backend env (e.g. `TRANSCRIPT_API_SECRET`).
 3. Restart. Unauthenticated requests now get `401`; `/api/health` and `/static`
-   stay public. (If the secret is left blank, auth is disabled for local dev.)
+   stay public.
+
+For local or otherwise trusted use, set `AUTH_ENABLED=false` and restart the
+web container. This opens both the dashboard and API without credentials.
+Leaving `API_SECRET_KEY` blank also disables auth for backward compatibility.
 
 A request is authorized by any of: the `X-API-Key` header, an
 `Authorization: Bearer <token>` header, a `?token=` query param, or the
