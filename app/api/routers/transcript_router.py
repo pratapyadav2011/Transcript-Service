@@ -7,12 +7,15 @@ from __future__ import annotations
 import os
 import uuid
 import logging
+from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, AnyHttpUrl
 
 from app.core.config import settings, transcription_queue
 from app.core import job_store
 from app.services import mongo_writer
+from app.services.resolver.media_resolver import resolve_candidates
+from app.services.resolver.url_classifier import is_media_url
 from app.tasks.transcript_task import transcribe_url_task, transcribe_upload_task
 
 router = APIRouter(prefix="/api/transcript", tags=["transcript"])
@@ -38,6 +41,33 @@ class UrlRequest(BaseModel):
     url: str
     meeting_id: str = ""
     actor: str = "system"
+
+
+@router.post("/media-links")
+def find_media_links(body: UrlRequest):
+    """Resolve a player/page URL into links the user's browser can download."""
+    parsed = urlparse(body.url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Enter a valid HTTP(S) URL")
+    try:
+        candidates = resolve_candidates(body.url)
+    except Exception as exc:
+        logger.warning("Media-link resolution failed for %s: %s", body.url, exc)
+        raise HTTPException(status_code=422, detail="No downloadable media links found") from exc
+
+    links = []
+    for url in dict.fromkeys(candidates):
+        if not is_media_url(url):
+            continue
+        ext = os.path.splitext(urlparse(url).path)[1].lstrip(".").lower()
+        links.append({
+            "url": url,
+            "format": ext.upper() or "MEDIA",
+            "downloadable": ext != "m3u8",
+        })
+    if not links:
+        raise HTTPException(status_code=404, detail="No downloadable media links found")
+    return {"source_url": body.url, "links": links}
 
 
 @router.post("/meeting")

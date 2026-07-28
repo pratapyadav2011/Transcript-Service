@@ -22,15 +22,19 @@
           <span id="url-spinner" class="htmx-indicator spinner"></span>
           Fetch Transcript
         </button>
+        <button type="button" class="btn btn-secondary" onclick="findMediaLinks()">
+          Find Download Links
+        </button>
       </div>
     </form>
     <div id="url-result"></div>
+    <div id="media-links-result"></div>
   </div>
 
   <!-- File upload -->
   <div class="card">
     <h2>📁 Upload File</h2>
-    <p class="hint">MP3, MP4, WAV, M4A, WEBM, MOV, AVI — audio or video.</p>
+    <p class="hint">MP3, MP4, WAV, M4A, WEBM, MOV, AVI — downloaded media can be uploaded here for local Whisper.</p>
     <form id="upload-form" enctype="multipart/form-data"
           onsubmit="submitUploadForm(event)">
       <label>File

@@ -82,6 +82,60 @@ async function submitUrlForm(event) {
   }
 }
 
+async function findMediaLinks() {
+  const input = document.getElementById('url-input');
+  const target = document.getElementById('media-links-result');
+  const sourceUrl = input && input.value.trim();
+  if (!sourceUrl || !target) {
+    showResult('url-result', 'Enter a video or meeting URL first.', false);
+    return;
+  }
+
+  target.replaceChildren();
+  const loading = document.createElement('div');
+  loading.className = 'media-links-panel';
+  loading.textContent = 'Searching for downloadable media…';
+  target.appendChild(loading);
+
+  try {
+    const res = await fetch('/api/transcript/media-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: sourceUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'No media links found');
+
+    const panel = document.createElement('div');
+    panel.className = 'media-links-panel';
+    const heading = document.createElement('strong');
+    heading.textContent = 'Download in your browser, then upload the file';
+    panel.appendChild(heading);
+
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Choose MP3 when available—it is smaller and already audio-only. If a link opens a player, use the browser’s download/save option.';
+    panel.appendChild(note);
+
+    const list = document.createElement('div');
+    list.className = 'media-link-list';
+    data.links.forEach((item) => {
+      const link = document.createElement('a');
+      link.className = `btn ${item.downloadable ? 'btn-success' : 'btn-secondary'}`;
+      link.href = item.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = item.downloadable ? `Download ${item.format}` : `Open ${item.format} stream`;
+      list.appendChild(link);
+    });
+    panel.appendChild(list);
+    target.replaceChildren(panel);
+  } catch (err) {
+    target.replaceChildren();
+    showResult('media-links-result', `✗ ${err.message}`, false);
+  }
+}
+
 async function submitUploadForm(event) {
   event.preventDefault();
   const form = event.target;

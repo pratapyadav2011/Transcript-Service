@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 from typing import Callable
 import requests
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 HEADERS = {
@@ -28,9 +30,9 @@ def _ext_from_url(url: str) -> str:
     return ext.lstrip(".").lower() or "mp4"
 
 
-def _header_variants(referer: str | None) -> list[dict[str, str]]:
+def _header_variants(*referers: str | None) -> list[dict[str, str]]:
     variants = [dict(HEADERS)]
-    if referer:
+    for referer in dict.fromkeys(ref for ref in referers if ref):
         with_referer = dict(HEADERS)
         with_referer["Referer"] = referer
         variants.append(with_referer)
@@ -70,11 +72,26 @@ def download_direct(
 
     logger.info("Downloading direct media: %s", url)
 
+    proxies = None
+    if settings.MEDIA_PROXY_URL:
+        proxies = {
+            "http": settings.MEDIA_PROXY_URL,
+            "https": settings.MEDIA_PROXY_URL,
+        }
+
     last_error: Exception | None = None
-    effective_referer = referer if referer and referer != url else _granicus_referer(url)
-    for headers in _header_variants(effective_referer):
+    supplied_referer = referer if referer and referer != url else None
+    # Granicus can reject its full player URL while accepting the tenant origin,
+    # so always try the derived origin even when the caller supplied a referer.
+    for headers in _header_variants(supplied_referer, _granicus_referer(url)):
         try:
-            with requests.get(url, headers=headers, stream=True, timeout=300) as resp:
+            with requests.get(
+                url,
+                headers=headers,
+                proxies=proxies,
+                stream=True,
+                timeout=300,
+            ) as resp:
                 resp.raise_for_status()
                 total = int(resp.headers.get("content-length", 0))
                 downloaded = 0
