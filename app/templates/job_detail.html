@@ -31,8 +31,10 @@
     {% elif job.source_type == 'url' %}
       <button class="btn btn-secondary" onclick="rerunJob('{{ job.job_id }}')">↻ Rerun</button>
     {% endif %}
+    {% if job.status == 'DONE' %}
     <button class="btn btn-secondary" onclick="copyTranscript()">📋 Copy Transcript</button>
     <button class="btn btn-secondary" onclick="downloadTranscript()">⬇ Download .txt</button>
+    {% endif %}
   </div>
 </div>
 

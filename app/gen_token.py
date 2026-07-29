@@ -4,7 +4,7 @@ Mint a signed access token from the command line.
     python -m app.gen_token            # token valid 1 hour
     python -m app.gen_token 28800      # token valid 8 hours (seconds)
 
-Uses API_SECRET_KEY from the environment / .env. Your website normally mints
+Uses TRANSCRIPT_SECRET_KEY from the environment / .env. Your website normally mints
 these itself (see README) — this is for testing.
 """
 import sys

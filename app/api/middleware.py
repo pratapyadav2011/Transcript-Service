@@ -10,7 +10,7 @@ A request is allowed if ANY of these hold:
 A valid `?token=` also sets the session cookie, so your website only needs to
 link a user in once (e.g. https://transcripts.example.com/?token=XYZ).
 
-If AUTH_ENABLED is false, or API_SECRET_KEY is unset, auth is DISABLED (open)
+If AUTH_ENABLED is false, or TRANSCRIPT_SECRET_KEY is unset, auth is DISABLED (open)
 so local dev works — always enable auth and set the secret in production.
 """
 from __future__ import annotations
@@ -37,7 +37,7 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
     # Dev fallback: explicitly disabled or no secret configured.
-    if not settings.AUTH_ENABLED or not settings.API_SECRET_KEY:
+    if not settings.AUTH_ENABLED or not settings.TRANSCRIPT_SECRET_KEY:
         return await call_next(request)
 
     if _is_public(path):

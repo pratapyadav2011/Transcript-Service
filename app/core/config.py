@@ -98,8 +98,11 @@ class Settings:
         "1", "true", "yes", "on",
     }
 
-    # API key for Next.js → Python service calls
-    API_SECRET_KEY: str = os.getenv("API_SECRET_KEY", "")
+    # Shared secret for Next.js → Python service calls. Keep the old environment
+    # name as a migration fallback so existing deployments do not lock users out.
+    TRANSCRIPT_SECRET_KEY: str = (
+        os.getenv("TRANSCRIPT_SECRET_KEY", "") or os.getenv("API_SECRET_KEY", "")
+    )
 
 
 settings = Settings()

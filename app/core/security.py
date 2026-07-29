@@ -23,21 +23,21 @@ SESSION_COOKIE = "ts_session"
 
 def _sign(payload: str) -> str:
     return hmac.new(
-        settings.API_SECRET_KEY.encode(), payload.encode(), hashlib.sha256
+        settings.TRANSCRIPT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()
 
 
 def make_token(ttl_seconds: int = 3600) -> str:
-    """Mint a signed token valid for `ttl_seconds`. Needs API_SECRET_KEY set."""
-    if not settings.API_SECRET_KEY:
-        raise RuntimeError("API_SECRET_KEY is not configured.")
+    """Mint a signed token valid for `ttl_seconds`. Needs the secret configured."""
+    if not settings.TRANSCRIPT_SECRET_KEY:
+        raise RuntimeError("TRANSCRIPT_SECRET_KEY is not configured.")
     expiry = str(int(time.time()) + ttl_seconds)
     return f"{expiry}.{_sign(expiry)}"
 
 
 def verify_token(token: str) -> bool:
     """True if `token` is well-formed, correctly signed, and not expired."""
-    if not token or "." not in token or not settings.API_SECRET_KEY:
+    if not token or "." not in token or not settings.TRANSCRIPT_SECRET_KEY:
         return False
     expiry, sig = token.rsplit(".", 1)
     if not hmac.compare_digest(sig, _sign(expiry)):
@@ -50,6 +50,6 @@ def verify_token(token: str) -> bool:
 
 def verify_api_key(key: str) -> bool:
     """Constant-time comparison against the static shared secret."""
-    if not settings.API_SECRET_KEY:
+    if not settings.TRANSCRIPT_SECRET_KEY:
         return False
-    return hmac.compare_digest(key or "", settings.API_SECRET_KEY)
+    return hmac.compare_digest(key or "", settings.TRANSCRIPT_SECRET_KEY)
