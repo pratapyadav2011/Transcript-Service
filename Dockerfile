@@ -1,4 +1,11 @@
+FROM node:22-slim AS node-runtime
+
 FROM python:3.11-slim
+
+# Current yt-dlp requires a supported JavaScript runtime for YouTube's player
+# challenges. Debian's nodejs package can lag behind, so copy Node 22 from the
+# official multi-architecture image.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 # ffmpeg   → audio extraction / HLS streams
 # espeak   → aeneas forced alignment (phoneme timing); libespeak-dev + build tools

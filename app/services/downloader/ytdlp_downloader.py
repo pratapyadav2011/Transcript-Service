@@ -34,6 +34,7 @@ def download_audio(
 
     args = [
         binary,
+        "--js-runtimes", "node",
         "--format", FORMAT_SELECTOR,
         "--extract-audio",                 # strip video → audio only
         "--audio-format", AUDIO_FORMAT,
@@ -62,7 +63,12 @@ def download_audio(
     # YouTube blocks datacenter/VM IPs ("confirm you're not a bot"). Cookies (from a
     # file or a local browser) and/or a residential proxy get past it. A cookies
     # file wins over browser extraction when both are set.
-    if settings.YTDLP_COOKIES_FILE and os.path.isfile(settings.YTDLP_COOKIES_FILE):
+    if settings.YTDLP_COOKIES_FILE:
+        if not os.path.isfile(settings.YTDLP_COOKIES_FILE):
+            raise RuntimeError(
+                "YTDLP_COOKIES_FILE is configured but is not readable inside "
+                f"the worker container: {settings.YTDLP_COOKIES_FILE}"
+            )
         args[1:1] = ["--cookies", settings.YTDLP_COOKIES_FILE]
     elif settings.YTDLP_COOKIES_FROM_BROWSER:
         args[1:1] = ["--cookies-from-browser", settings.YTDLP_COOKIES_FROM_BROWSER]
