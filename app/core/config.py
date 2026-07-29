@@ -72,11 +72,13 @@ class Settings:
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small.en")
     WHISPER_DEVICE: str = os.getenv("WHISPER_DEVICE", "cpu")
     WHISPER_COMPUTE_TYPE: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-    WHISPER_CPU_THREADS: int = int(os.getenv("WHISPER_CPU_THREADS", "8"))
+    # Conservative default for a shared 4-vCPU / 8-GB VM: reserve one CPU for
+    # the API, Redis, downloads, and ffmpeg. Every value remains env-overridable.
+    WHISPER_CPU_THREADS: int = int(os.getenv("WHISPER_CPU_THREADS", "3"))
     # Peak RAM scales with batch size. On CPU int8 a larger batch mostly trades
     # memory for a little throughput, and multi-hour audio + word timestamps can
     # OOM-kill the worker. Keep this modest; raise only if the box has headroom.
-    WHISPER_BATCH_SIZE: int = int(os.getenv("WHISPER_BATCH_SIZE", "4"))
+    WHISPER_BATCH_SIZE: int = int(os.getenv("WHISPER_BATCH_SIZE", "2"))
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
     WHISPER_LANGUAGE: str = os.getenv("WHISPER_LANGUAGE", "en")
     WHISPER_MODEL_DIR: str = os.getenv("WHISPER_MODEL_DIR", "/models/whisper")
