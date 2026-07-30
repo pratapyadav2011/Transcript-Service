@@ -22,7 +22,15 @@ def is_youtube_url(url: str) -> bool:
 def is_granicus_player(url: str) -> bool:
     try:
         p = urlparse(url)
-        return ".granicus.com" in p.hostname and "/player/clip/" in p.path
+        if not p.hostname or not p.hostname.lower().endswith(".granicus.com"):
+            return False
+        path = p.path.lower()
+        if "/player/clip/" in path:
+            return True
+        # Legacy Granicus sites expose downloadLinks from MediaPlayer.php.
+        return path.endswith("/mediaplayer.php") and bool(
+            re.search(r"(?:^|&)clip_id=\d+(?:&|$)", p.query, re.IGNORECASE)
+        )
     except Exception:
         return False
 

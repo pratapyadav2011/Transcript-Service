@@ -34,6 +34,9 @@ def fetch_text(url: str, timeout: int = 15) -> str:
 def decode_entities(text: str) -> str:
     for entity, char in HTML_ENTITY_MAP.items():
         text = text.replace(entity, char)
+    # Legacy Granicus MediaPlayer.php pages put their MP3/MP4 download URLs in
+    # JavaScript arrays encoded as https:\/\/archive-video.granicus.com\/...
+    text = text.replace(r"\/", "/")
     return text
 
 

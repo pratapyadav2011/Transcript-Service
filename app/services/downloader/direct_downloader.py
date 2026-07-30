@@ -30,12 +30,23 @@ def _ext_from_url(url: str) -> str:
     return ext.lstrip(".").lower() or "mp4"
 
 
-def _header_variants(*referers: str | None) -> list[dict[str, str]]:
+def _header_variants(
+    *referers: str | None,
+    use_range_retry: bool = False,
+) -> list[dict[str, str]]:
     variants = [dict(HEADERS)]
     for referer in dict.fromkeys(ref for ref in referers if ref):
         with_referer = dict(HEADERS)
         with_referer["Referer"] = referer
         variants.append(with_referer)
+    # Some Granicus CloudFront edges reject a regular full-object GET from a VM
+    # but serve the same object as a standards-compliant byte range. bytes=0-
+    # still requests the complete file, from its first byte through EOF.
+    if use_range_retry:
+        for headers in list(variants):
+            ranged = dict(headers)
+            ranged["Range"] = "bytes=0-"
+            variants.append(ranged)
     return variants
 
 
@@ -83,7 +94,12 @@ def download_direct(
     supplied_referer = referer if referer and referer != url else None
     # Granicus can reject its full player URL while accepting the tenant origin,
     # so always try the derived origin even when the caller supplied a referer.
-    for headers in _header_variants(supplied_referer, _granicus_referer(url)):
+    granicus_referer = _granicus_referer(url)
+    for headers in _header_variants(
+        supplied_referer,
+        granicus_referer,
+        use_range_retry=granicus_referer is not None,
+    ):
         try:
             with requests.get(
                 url,
