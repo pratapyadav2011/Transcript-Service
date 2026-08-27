@@ -24,7 +24,7 @@ def try_captions(job_id, log, url, meeting_id, transcript_id, actor) -> dict | N
     log(STEP_TRANSCRIBING, "Checking for existing YouTube captions...")
     captions = fetch_captions(url, log=lambda m: log(STEP_TRANSCRIBING, m))
     if not captions:
-        log(STEP_DOWNLOADING, "No captions found — downloading audio for Gemini...")
+        log(STEP_DOWNLOADING, "No captions found — downloading audio for transcription...")
         return None
     log(STEP_SAVING, f"Using YouTube captions ({len(captions)} chars)...")
     return _finalize(job_id, meeting_id, transcript_id, actor, url, captions, "captions")
@@ -35,7 +35,7 @@ def try_subtitles(job_id, log, url, meeting_id, transcript_id, actor) -> dict | 
     log(STEP_TRANSCRIBING, "Checking for embedded captions/subtitles...")
     subs = fetch_subtitles(url, log=lambda m: log(STEP_TRANSCRIBING, m))
     if not subs:
-        log(STEP_DOWNLOADING, "No usable captions — downloading audio for Gemini...")
+        log(STEP_DOWNLOADING, "No usable captions — downloading audio for transcription...")
         return None
     log(STEP_SAVING, f"Using embedded captions ({len(subs)} chars)...")
     return _finalize(job_id, meeting_id, transcript_id, actor, url, subs, "subtitles")

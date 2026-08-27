@@ -5,10 +5,11 @@ Given any URL, returns an ordered list of media candidates to try.
 from __future__ import annotations
 import logging
 from app.services.resolver.url_classifier import (
-    is_granicus_player, is_civicclerk_url, is_youtube_url,
+    is_granicus_player, is_civicclerk_url, is_youtube_url, is_vimeo_url,
 )
 from app.services.resolver.granicus_resolver import resolve as resolve_granicus
 from app.services.resolver.civicclerk_resolver import resolve as resolve_civicclerk
+from app.services.resolver.vimeo_resolver import resolve as resolve_vimeo
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,10 @@ def resolve_candidates(url: str) -> list[str]:
         if is_youtube_url(url):
             logger.info("[Resolver] YouTube URL detected")
             return [url]
+
+        if is_vimeo_url(url):
+            logger.info("[Resolver] Vimeo URL detected")
+            return [resolve_vimeo(url)]
 
     except Exception as exc:
         logger.warning("[Resolver] Platform resolution failed (%s); using original URL", exc)

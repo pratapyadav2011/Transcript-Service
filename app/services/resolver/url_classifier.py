@@ -19,6 +19,14 @@ def is_youtube_url(url: str) -> bool:
     return bool(YOUTUBE_PATTERN.match(url))
 
 
+def is_vimeo_url(url: str) -> bool:
+    try:
+        hostname = (urlparse(url).hostname or "").lower()
+        return hostname == "vimeo.com" or hostname.endswith(".vimeo.com")
+    except Exception:
+        return False
+
+
 def is_granicus_player(url: str) -> bool:
     try:
         p = urlparse(url)

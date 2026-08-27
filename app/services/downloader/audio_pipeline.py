@@ -26,9 +26,28 @@ Step = Callable[[str], None]
 # (large uploads fail the Files API finalize with KeyError('file')).
 _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v", ".flv", ".ts", ".mpg", ".mpeg"}
 
+MANUAL_DOWNLOAD_MESSAGE = (
+    "Automatic media download was blocked by the source server (HTTP 403), "
+    "likely because it rejects this VM/datacenter IP. Try manual download: "
+    "return to Generate Transcript, enter the source URL, click "
+    "“Find Download Links”, download the MP3 or MP4 in your browser, then "
+    "upload that file under “Upload File” to generate the transcript."
+)
+
 
 def _unique(urls: list[str]) -> list[str]:
     return list(dict.fromkeys(urls))
+
+
+def _final_acquisition_error(original_url: str, errors: list[str]) -> str:
+    """Return a concise saved error while detailed strategy failures stay in logs."""
+    if any("403" in error and "forbidden" in error.lower() for error in errors):
+        return MANUAL_DOWNLOAD_MESSAGE
+    return (
+        f"All audio acquisition strategies failed. "
+        f"Original URL: {original_url}. "
+        f"Errors: {' | '.join(errors)}"
+    )
 
 
 def _ensure_audio(path: str, ffmpeg: str | None, log: Step) -> str:
@@ -118,11 +137,7 @@ def acquire_audio(
         errors.append("ffmpeg not found on this server")
         log("ffmpeg not found — skipping")
 
-    raise RuntimeError(
-        f"All audio acquisition strategies failed. "
-        f"Original URL: {original_url}. "
-        f"Errors: {' | '.join(errors)}"
-    )
+    raise RuntimeError(_final_acquisition_error(original_url, errors))
 
 
 def cleanup(path: str) -> None:
