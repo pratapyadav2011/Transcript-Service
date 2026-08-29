@@ -5,11 +5,13 @@ that the Next.js app uses.
 Mirrors:
   MeetingTranscriptStatusService.ts  → meetings collection
   MeetingTranscriptService.ts        → transcripts collection
-  MeetingLogService.ts + applicationLog.ts → applicationlogs collection
+  MeetingLogService.ts + applicationLog.ts → application_logs collection
 """
 from __future__ import annotations
 import logging
-from datetime import datetime, timezone
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 from app.core.mongo_client import get_db
 
@@ -139,10 +141,18 @@ def write_log(
     meeting_id: str = "",
     log_type: str = "info",
     details: dict | None = None,
+    status: str = "",
+    operation: str = "generate_transcript",
+    correlation_id: str = "",
+    error: dict | None = None,
 ) -> None:
     db = get_db()
     try:
-        db.applicationlogs.insert_one({
+        now = _now()
+        retention_days = 30 if log_type == "info" else 180
+        # The Next.js ApplicationLog model explicitly uses `application_logs`.
+        # Do not rely on either ODM's automatic model-name pluralization here.
+        db.application_logs.insert_one({
             "applicationName": "Meetings",
             "tag": tag,
             "type": log_type,
@@ -151,8 +161,18 @@ def write_log(
             "creator_id": actor,
             "entityType": "meeting",
             "entityId": meeting_id,
+            "eventId": str(uuid.uuid4()),
+            "correlationId": correlation_id,
+            "service": "transcript-service",
+            "operation": operation,
+            "status": status,
+            "durationMs": None,
+            "environment": os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "")),
+            "release": os.getenv("RELEASE", os.getenv("GIT_COMMIT_SHA", "")),
+            "error": error,
             "details": details or None,
-            "time": _now(),
+            "time": now,
+            "expiresAt": now + timedelta(days=retention_days),
         })
     except Exception as exc:
         logger.error("[mongo] Failed to write log: %s", exc)

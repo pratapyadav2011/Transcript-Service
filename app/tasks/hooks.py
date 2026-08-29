@@ -14,9 +14,9 @@ from app.services import mongo_writer
 
 logger = logging.getLogger(__name__)
 
-# Single tag for everything this service logs; the `type` field (info/warn/error)
-# and the message distinguish generated / failed / stopped.
-LOG_TAG = "TRANSSCRIPT_SERVICE_LOG"
+SUCCESS_TAG = "MEETING_TRANSCRIPT_GENERATED"
+FAILURE_TAG = "MEETING_TRANSCRIPT_GENERATE_FAILED"
+STOPPED_TAG = "MEETING_TRANSCRIPT_GENERATION_STOPPED"
 STOP_MESSAGE = "Transcript generation stopped by user."
 
 
@@ -36,32 +36,39 @@ def on_success(
     transcript: str,
     actor: str,
     source_label: str,
+    job_id: str = "",
 ) -> None:
     if not (meeting_id and transcript_id):
         return
     mongo_writer.update_transcript_text(transcript_id, transcript)
     mongo_writer.set_transcript_generated(meeting_id)
     mongo_writer.write_log(
-        tag=LOG_TAG,
-        message=f"Transcript generated with Gemini ({source_label})",
+        tag=SUCCESS_TAG,
+        message="Meeting transcript generated successfully",
         actor=actor,
         meeting_id=meeting_id,
+        status="succeeded",
+        correlation_id=job_id,
+        details={"jobId": job_id, "source": source_label},
     )
 
 
-def on_failure(meeting_id: str, error_msg: str, actor: str) -> None:
+def on_failure(meeting_id: str, error_msg: str, actor: str, job_id: str = "") -> None:
     """Mark the meeting failed + write an error log. Guarded so a Mongo problem
     can never mask the original job error (matches `.catch(() => {})` in TS)."""
-    _mark_failed(meeting_id, error_msg, actor, log_type="error")
+    _mark_failed(meeting_id, error_msg, actor, job_id, FAILURE_TAG, "error", "failed")
 
 
-def on_stopped(meeting_id: str, actor: str) -> None:
+def on_stopped(meeting_id: str, actor: str, job_id: str = "") -> None:
     """A stopped job is terminal too — mark the meeting failed so it never hangs
     in `generating` (the status enum has no `stopped`)."""
-    _mark_failed(meeting_id, STOP_MESSAGE, actor, log_type="warn")
+    _mark_failed(meeting_id, STOP_MESSAGE, actor, job_id, STOPPED_TAG, "warn", "failed")
 
 
-def _mark_failed(meeting_id: str, message: str, actor: str, log_type: str) -> None:
+def _mark_failed(
+    meeting_id: str, message: str, actor: str, job_id: str,
+    tag: str, log_type: str, status: str,
+) -> None:
     if not meeting_id:
         return
     try:
@@ -70,8 +77,11 @@ def _mark_failed(meeting_id: str, message: str, actor: str, log_type: str) -> No
         logger.exception("[hooks] set_transcript_failed failed for %s", meeting_id)
     try:
         mongo_writer.write_log(
-            tag=LOG_TAG, message=message, actor=actor,
+            tag=tag, message=message, actor=actor,
             meeting_id=meeting_id, log_type=log_type,
+            status=status, correlation_id=job_id,
+            error={"message": message} if log_type == "error" else None,
+            details={"jobId": job_id},
         )
     except Exception:
         logger.exception("[hooks] failure log write failed for %s", meeting_id)

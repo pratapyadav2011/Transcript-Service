@@ -107,7 +107,9 @@ def stop_job(job_id: str):
     # Update Mongo here too — terminate=True may kill the worker before its own
     # checkpoint runs, so the meeting would otherwise hang in "generating".
     if job["status"] not in TERMINAL_STATUSES:
-        hooks.on_stopped(job.get("meeting_id", ""), job.get("actor", "system"))
+        hooks.on_stopped(
+            job.get("meeting_id", ""), job.get("actor", "system"), job_id=job_id,
+        )
     return {"status": "stopped", "job_id": job_id}
 
 
@@ -217,7 +219,9 @@ def delete_job(job_id: str):
     set_control(job_id, CONTROL_STOPPED)
     celery_app.control.revoke(job_id, terminate=True)
     if job["status"] not in TERMINAL_STATUSES:
-        hooks.on_stopped(job.get("meeting_id", ""), job.get("actor", "system"))
+        hooks.on_stopped(
+            job.get("meeting_id", ""), job.get("actor", "system"), job_id=job_id,
+        )
     retry_audio = job.get("retry_audio_path", "")
     if retry_audio and os.path.isfile(retry_audio):
         if job.get("retry_cleanup_mode") == "temp":

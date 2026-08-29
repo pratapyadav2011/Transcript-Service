@@ -108,13 +108,13 @@ def transcribe_url_task(
                 set_transcription_retry(job_id, audio_path, "keep")
 
         log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
-        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=url)
+        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=url, job_id=job_id)
         set_job_done(job_id, transcript)
         return {"status": "done", "transcript": transcript}
 
     except StopRequested:
         set_job_stopped(job_id)
-        hooks.on_stopped(meeting_id, actor)
+        hooks.on_stopped(meeting_id, actor, job_id=job_id)
         return {"status": "stopped"}
     except Exception as exc:
         # Whatever went wrong after the audio was in hand (transcription, saving,
@@ -169,13 +169,13 @@ def transcribe_upload_task(
                 set_transcription_retry(job_id, audio_path, "keep")
 
         log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
-        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_filename)
+        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_filename, job_id=job_id)
         set_job_done(job_id, transcript)
         return {"status": "done", "transcript": transcript}
 
     except StopRequested:
         set_job_stopped(job_id)
-        hooks.on_stopped(meeting_id, actor)
+        hooks.on_stopped(meeting_id, actor, job_id=job_id)
         return {"status": "stopped"}
     except Exception as exc:
         # Keep the prepared audio on any post-preparation failure so the user can
@@ -218,12 +218,12 @@ def retry_cached_audio_task(
         checkpoint(job_id)
         transcript = _transcribe(job_id, log, audio_path, engine_override=engine_override)
         log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
-        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=source_label)
+        hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=source_label, job_id=job_id)
         set_job_done(job_id, transcript)
         return {"status": "done", "transcript": transcript, "source": "cached_audio"}
     except StopRequested:
         set_job_stopped(job_id)
-        hooks.on_stopped(meeting_id, actor)
+        hooks.on_stopped(meeting_id, actor, job_id=job_id)
         return {"status": "stopped"}
     except Exception as exc:
         # Retry failed again — keep the audio so it can be retried once more.
@@ -332,7 +332,7 @@ def _try_remote_media_transcription(
         log=lambda msg: log(STEP_TRANSCRIBING, msg),
     )
     log(STEP_SAVING, f"Saving transcript ({len(transcript)} chars)...")
-    hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_url)
+    hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_url, job_id=job_id)
     set_job_done(job_id, transcript)
     return {"status": "done", "transcript": transcript, "source": "gemini_url"}
 
@@ -374,7 +374,7 @@ def _fail(job_id, error_msg, meeting_id, actor, log) -> None:
     else:
         log(STEP_FAILED, error_msg, level="error")
     set_job_failed(job_id, error_msg)
-    hooks.on_failure(meeting_id, error_msg, actor)
+    hooks.on_failure(meeting_id, error_msg, actor, job_id=job_id)
 
 
 def _preserve_for_retry(job_id: str, audio_path: str, log: logging.Logger) -> str | None:

@@ -14,7 +14,7 @@ from app.services.transcriber.subtitle_extractor import fetch_subtitles
 
 
 def _finalize(job_id, meeting_id, transcript_id, actor, url, text, source) -> dict:
-    hooks.on_success(meeting_id, transcript_id, text, actor, source_label=url)
+    hooks.on_success(meeting_id, transcript_id, text, actor, source_label=url, job_id=job_id)
     set_job_done(job_id, text)
     return {"status": "done", "transcript": text, "source": source}
 
