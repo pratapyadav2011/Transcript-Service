@@ -10,7 +10,10 @@ from app.core.job_store import (
 )
 from app.tasks import hooks
 from app.services.transcriber.youtube_captions import fetch_captions
-from app.services.transcriber.subtitle_extractor import fetch_subtitles
+from app.services.transcriber.subtitle_extractor import (
+    fetch_subtitles, _to_text, MIN_CAPTION_CHARS,
+)
+from app.services.resolver.civicclerk_resolver import fetch_closed_captions
 
 
 def _finalize(job_id, meeting_id, transcript_id, actor, url, text, source) -> dict:
@@ -39,3 +42,15 @@ def try_subtitles(job_id, log, url, meeting_id, transcript_id, actor) -> dict | 
         return None
     log(STEP_SAVING, f"Using embedded captions ({len(subs)} chars)...")
     return _finalize(job_id, meeting_id, transcript_id, actor, url, subs, "subtitles")
+
+
+def try_civicclerk_captions(job_id, log, url, meeting_id, transcript_id, actor) -> dict | None:
+    """CivicClerk's published closed-caption SRT — avoids multi-GB video downloads."""
+    log(STEP_TRANSCRIBING, "Checking for CivicClerk closed captions...")
+    raw = fetch_closed_captions(url)
+    text = _to_text(raw) if raw else ""
+    if len(text) < MIN_CAPTION_CHARS:
+        log(STEP_TRANSCRIBING, "No usable CivicClerk captions.")
+        return None
+    log(STEP_SAVING, f"Using CivicClerk closed captions ({len(text)} chars)...")
+    return _finalize(job_id, meeting_id, transcript_id, actor, url, text, "captions")

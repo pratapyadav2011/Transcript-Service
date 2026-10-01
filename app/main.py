@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.middleware import auth_middleware
 from app.api.routers import (
-    health_router, transcript_router, jobs_router, ui_router,
+    health_router, transcript_router, jobs_router, ui_router, cookies_router,
 )
 
 logging.basicConfig(
@@ -39,6 +39,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(health_router.router)
 app.include_router(transcript_router.router)
 app.include_router(jobs_router.router)
+app.include_router(cookies_router.router)
 app.include_router(ui_router.router)
 
 

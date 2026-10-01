@@ -19,6 +19,7 @@ from typing import Callable
 
 from app.core.config import settings
 from app.services.downloader.binary_finder import find_ytdlp
+from app.services.downloader import cookie_store
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,10 @@ def fetch_subtitles(url: str, log: Callable[[str], None] | None = None) -> str |
     ]
     if settings.MEDIA_PROXY_URL:
         args[1:1] = ["--proxy", settings.MEDIA_PROXY_URL]
+    # Caption listing hits the same bot wall as the media download on YouTube.
+    cookies_file = cookie_store.active_path()
+    if cookies_file:
+        args[1:1] = ["--cookies", cookies_file]
 
     try:
         subprocess.run(args, capture_output=True, text=True, timeout=120)

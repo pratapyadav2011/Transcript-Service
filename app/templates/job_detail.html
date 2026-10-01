@@ -62,6 +62,21 @@
   {% endif %}
 </div>
 
+{# Blocked by YouTube's bot wall: offer the cookie upload right here so the user
+   can fix it and requeue without leaving the failed job. #}
+{% if job.status == 'FAILED' and job.source_type == 'url'
+      and ('bot check' in job.error|lower or 'not a bot' in job.error|lower) %}
+<div class="card">
+  <h2>🔐 Add YouTube cookies</h2>
+  <p class="hint">
+    YouTube blocked this download because the server's IP looks automated.
+    Uploading cookies from a signed-in browser session usually fixes it.
+  </p>
+  {% set rerun_job_id = job.job_id %}
+  {% include "partials/cookie_panel.html" %}
+</div>
+{% endif %}
+
 <!-- Live logs -->
 <div class="card">
   <div class="card-header">

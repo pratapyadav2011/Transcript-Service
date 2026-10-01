@@ -185,6 +185,82 @@ async function retryWithGemini(jobId) {
   }
 }
 
+// ── YouTube cookie jar ──────────────────────────────────────────────────────
+// A page cannot read youtube.com cookies itself (cross-origin + HttpOnly), so
+// the user exports cookies.txt from their browser and hands us the file.
+
+function renderCookieStatus(data) {
+  const el = document.getElementById('cookie-status');
+  if (!el) return;
+  if (!data.present) {
+    el.className = 'cookie-status';
+    el.textContent = 'No cookies stored — YouTube downloads may hit the bot check.';
+    return;
+  }
+  const when = new Date(data.updated_at * 1000).toLocaleString();
+  const expires = data.expires_at
+    ? new Date(data.expires_at * 1000).toLocaleDateString()
+    : 'unknown';
+  if (data.expired || data.warning) {
+    el.className = 'cookie-status cookie-status-stale';
+    el.textContent = data.warning
+      ? `Stored cookies look unusable: ${data.warning}`
+      : `Stored cookies expired on ${expires} — upload a fresh export.`;
+    return;
+  }
+  el.className = 'cookie-status cookie-status-ok';
+  el.textContent = `${data.count} cookies stored ${data.managed ? '' : '(set by env config) '}` +
+    `· updated ${when} · expires ${expires}`;
+}
+
+async function loadCookieStatus() {
+  if (!document.getElementById('cookie-status')) return;
+  try {
+    const res = await fetch('/api/cookies');
+    renderCookieStatus(await res.json());
+  } catch (err) {
+    renderCookieStatus({ present: false });
+  }
+}
+
+async function submitCookiesForm(event, rerunJobId) {
+  event.preventDefault();
+  const form = event.target;
+  const body = new FormData();
+  if (form.file.files.length) body.append('file', form.file.files[0]);
+  else body.append('text', form.text.value);
+
+  try {
+    const res = await fetch('/api/cookies', { method: 'POST', body });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Cookies rejected');
+    renderCookieStatus(data);
+    form.reset();
+    showResult('cookie-result', '✓ Cookies saved.', true);
+    if (rerunJobId) {
+      showResult('cookie-result', '✓ Cookies saved — rerunning job…', true);
+      setTimeout(() => rerunJob(rerunJobId), 600);
+    }
+  } catch (err) {
+    showResult('cookie-result', `✗ ${err.message}`, false);
+  }
+}
+
+async function deleteCookies() {
+  if (!confirm('Remove the stored YouTube cookies?')) return;
+  try {
+    const res = await fetch('/api/cookies', { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Delete failed');
+    renderCookieStatus(data);
+    showResult('cookie-result', '✓ Cookies removed.', true);
+  } catch (err) {
+    showResult('cookie-result', `✗ ${err.message}`, false);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadCookieStatus);
+
 // On the job-detail page, reload after a pause/resume/stop so the header
 // buttons reflect the new state (the status badge already polls live).
 document.body.addEventListener('htmx:afterRequest', (e) => {

@@ -114,3 +114,30 @@ input:focus { outline: none; border-color: var(--primary); }
   border-radius: 8px; background: rgba(255,255,255,.025); }
 .media-links-panel > .hint { margin: 6px 0 12px; }
 .media-link-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.cookie-status { padding: 10px 12px; border-radius: 8px; margin-bottom: 14px;
+  font-size: 13px; border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--muted); }
+.cookie-status-ok { border-color: var(--success); color: var(--success);
+  background: rgba(46,204,113,.1); }
+.cookie-status-stale { border-color: var(--warn); color: var(--warn);
+  background: rgba(240,173,78,.1); }
+.cookie-paste { margin-bottom: 12px; }
+.cookie-paste summary { color: var(--muted); font-size: 13px; cursor: pointer; }
+.cookie-paste textarea { width: 100%; margin-top: 8px; padding: 9px 11px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; }
+.cookie-form > .hint { margin-top: 12px; margin-bottom: 0; }
+
+.cookie-install { padding: 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(255,255,255,.025); margin-bottom: 14px; }
+.cookie-install > .hint { margin: 6px 0 10px; }
+.cookie-install > .hint:last-child { margin-bottom: 0; }
+.cookie-steps { margin: 0 0 10px; padding-left: 20px; font-size: 13px; color: var(--text); }
+.cookie-steps li { margin-bottom: 7px; }
+.cookie-steps code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.btn-sm { padding: 5px 10px; font-size: 12.5px; }
+.cookie-manual { margin-bottom: 14px; }
+.cookie-manual > summary { color: var(--muted); font-size: 13px; cursor: pointer;
+  margin-bottom: 12px; }

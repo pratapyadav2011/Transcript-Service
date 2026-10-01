@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Transcript Service \u2014 YouTube Cookies",
+  "version": "1.0.0",
+  "description": "One click: send your YouTube session cookies to your transcript service so it can download age/bot-gated videos.",
+  "permissions": [
+    "cookies",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.youtube.com/*",
+    "https://*.google.com/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Send YouTube cookies"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "youtube-cookies@transcript-service.local",
+      "strict_min_version": "115.0"
+    }
+  }
+}

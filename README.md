@@ -165,6 +165,23 @@ redirect(`https://transcripts.example.com/?token=${makeTranscriptToken(28800)}`)
 - Signed tokens expire — safe to put in a URL handed to a browser.
 - Quick local test token: `python -m app.gen_token 3600`.
 
+## YouTube cookies ("Sign in to confirm you're not a bot")
+
+YouTube blocks datacenter/VM IPs. The fix is a logged-in cookie jar, and there
+are two ways to get one into the service — no SSH or `.env` editing needed:
+
+1. **Browser extension (one click).** Load `tools/youtube-cookies-extension` as an
+   unpacked extension, set the service URL once, then click **Send cookies**
+   whenever downloads start failing. See that folder's README.
+2. **Manual upload.** On *Generate Transcript*, the **YouTube cookies** card takes a
+   `cookies.txt` exported by any cookies.txt browser extension. A failed job also
+   shows an **Add YouTube cookies** panel with a *Save cookies & rerun* button.
+
+Cookies are stored at `UPLOAD_DIR/youtube-cookies.txt` (mode `0600`) and picked up
+by the worker on the next job. Setting `YTDLP_COOKIES_FILE` overrides the uploaded
+file and disables replacing it from the UI. A residential `MEDIA_PROXY_URL` is the
+alternative if you would rather not hand the service an account session.
+
 ## API
 
 | Method | Path                       | Purpose                          |

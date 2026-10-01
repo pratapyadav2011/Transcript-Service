@@ -1,6 +1,7 @@
 """Downloads a direct media file URL over HTTP(S)."""
 from __future__ import annotations
 import os
+import shutil
 import logging
 import tempfile
 from urllib.parse import urlparse
@@ -90,6 +91,19 @@ def download_direct(
             "https": settings.MEDIA_PROXY_URL,
         }
 
+    try:
+        _download_to(dest, url, proxies, referer, progress_callback)
+    except BaseException:
+        # A dropped connection mid-download would otherwise leave a multi-GB
+        # partial file behind in the worker's /tmp.
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+
+    logger.info("Downloaded %d bytes to %s", os.path.getsize(dest), dest)
+    return dest
+
+
+def _download_to(dest, url, proxies, referer, progress_callback) -> None:
     last_error: Exception | None = None
     supplied_referer = referer if referer and referer != url else None
     # Granicus can reject its full player URL while accepting the tenant origin,
@@ -136,6 +150,3 @@ def download_direct(
 
     if os.path.getsize(dest) == 0:
         raise RuntimeError(f"Downloaded file is empty: {url}")
-
-    logger.info("Downloaded %d bytes to %s", os.path.getsize(dest), dest)
-    return dest

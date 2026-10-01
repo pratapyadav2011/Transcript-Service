@@ -24,7 +24,9 @@ from app.core.job_store import (
 from app.tasks.control import checkpoint, make_logger, StopRequested
 from app.tasks import hooks, fastpath
 from app.services.resolver.media_resolver import resolve_candidates
-from app.services.resolver.url_classifier import is_direct_media_url, is_youtube_url
+from app.services.resolver.url_classifier import (
+    is_direct_media_url, is_youtube_url, is_civicclerk_url,
+)
 from app.services.downloader.audio_pipeline import acquire_audio, cleanup
 from app.services.downloader.ffmpeg_extractor import extract_audio_from_upload
 from app.services.downloader.binary_finder import find_ffmpeg
@@ -65,9 +67,14 @@ def transcribe_url_task(
         # YouTube exposes a transcript API; other players (e.g. Granicus) sometimes
         # ship an embedded VTT we can pull without downloading the media.
         checkpoint(job_id)
+        done = None
         if is_youtube_url(url):
             done = fastpath.try_captions(job_id, log, url, meeting_id, transcript_id, actor)
-        else:
+        elif is_civicclerk_url(url):
+            done = fastpath.try_civicclerk_captions(
+                job_id, log, url, meeting_id, transcript_id, actor
+            )
+        if done is None and not is_youtube_url(url):
             # Use the resolved URL: Vimeo's public page extractor can fail with
             # OAuth 401 while its embedded player exposes subtitles normally.
             done = fastpath.try_subtitles(

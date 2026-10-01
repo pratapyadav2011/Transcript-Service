@@ -9,6 +9,7 @@ from typing import Callable
 
 from app.core.config import settings
 from app.services.downloader.binary_finder import find_ffmpeg
+from app.services.downloader import cookie_store
 
 logger = logging.getLogger(__name__)
 
@@ -60,16 +61,12 @@ def download_audio(
             f"youtube:player_client={settings.YTDLP_PLAYER_CLIENT}",
         ]
 
-    # YouTube blocks datacenter/VM IPs ("confirm you're not a bot"). Cookies (from a
-    # file or a local browser) and/or a residential proxy get past it. A cookies
-    # file wins over browser extraction when both are set.
-    if settings.YTDLP_COOKIES_FILE:
-        if not os.path.isfile(settings.YTDLP_COOKIES_FILE):
-            raise RuntimeError(
-                "YTDLP_COOKIES_FILE is configured but is not readable inside "
-                f"the worker container: {settings.YTDLP_COOKIES_FILE}"
-            )
-        args[1:1] = ["--cookies", settings.YTDLP_COOKIES_FILE]
+    # YouTube blocks datacenter/VM IPs ("confirm you're not a bot"). Cookies (from
+    # the UI upload, a configured file, or a local browser) and/or a residential
+    # proxy get past it. A cookies file wins over browser extraction.
+    cookies_file = cookie_store.active_path()
+    if cookies_file:
+        args[1:1] = ["--cookies", cookies_file]
     elif settings.YTDLP_COOKIES_FROM_BROWSER:
         args[1:1] = ["--cookies-from-browser", settings.YTDLP_COOKIES_FROM_BROWSER]
     if settings.MEDIA_PROXY_URL:
@@ -109,14 +106,15 @@ def download_audio(
         lowered = reason.lower()
         if "not a bot" in lowered or "sign in to confirm" in lowered or (
             "requested format is not available" in lowered
-            and not settings.YTDLP_COOKIES_FILE
+            and not cookies_file
             and not settings.YTDLP_COOKIES_FROM_BROWSER
         ):
+            stale = " The stored cookies may have expired." if cookies_file else ""
             raise RuntimeError(
-                "yt-dlp was blocked by YouTube's bot check (datacenter/VM IP). "
-                "Set YTDLP_COOKIES_FILE (or YTDLP_COOKIES_FROM_BROWSER) from a "
-                "logged-in account, add MEDIA_PROXY_URL (residential), and update "
-                f"yt-dlp. Details: {reason[:300]}"
+                "YouTube blocked this download with its bot check (datacenter/VM IP)."
+                f"{stale} Add YouTube cookies on the Generate Transcript page "
+                "(“YouTube cookies” card), then rerun this job. A residential "
+                f"MEDIA_PROXY_URL also works. Details: {reason[:300]}"
             )
         raise RuntimeError(f"yt-dlp exited with code {process.returncode}: {reason[:400]}")
 

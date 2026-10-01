@@ -1,0 +1,50 @@
+{# YouTube cookie jar. `rerun_job_id` (optional) makes the save button requeue
+   that job once the cookies are stored. #}
+<div id="cookie-status" class="cookie-status">Checking…</div>
+<div class="cookie-install">
+  <strong>One click, every time: install the helper extension</strong>
+  <p class="hint">
+    Browsers forbid a web page from reading youtube.com cookies, so this page cannot
+    grab them itself — the extension can, and it arrives already pointed at this server.
+  </p>
+  <ol class="cookie-steps">
+    <li><a class="btn btn-primary btn-sm" href="/api/cookies/extension.zip">⬇ Download extension</a>
+        then unzip it.</li>
+    <li>Open <code>chrome://extensions</code> and turn on <strong>Developer mode</strong>.</li>
+    <li>Click <strong>Load unpacked</strong> and pick the unzipped folder.</li>
+    <li>Log in to YouTube, click the extension icon, click <strong>Send cookies</strong>.</li>
+  </ol>
+  <p class="hint">Chrome removed installing extensions from web pages in 2018, so this
+    is the shortest path a self-hosted service can offer. Works in Edge and Firefox too.</p>
+</div>
+
+<details class="cookie-manual"{% if rerun_job_id %} open{% endif %}>
+  <summary>Prefer not to install anything? Upload a cookies.txt instead</summary>
+<form class="cookie-form" enctype="multipart/form-data"
+      onsubmit="submitCookiesForm(event, '{{ rerun_job_id or '' }}')">
+  <label>cookies.txt file
+    <input type="file" name="file" accept=".txt,text/plain" />
+  </label>
+  <details class="cookie-paste">
+    <summary>…or paste the contents</summary>
+    <textarea name="text" rows="4" spellcheck="false"
+              placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	1793577600	SID	…"></textarea>
+  </details>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">
+      {% if rerun_job_id %}Save cookies &amp; rerun{% else %}Save cookies{% endif %}
+    </button>
+    <button type="button" class="btn btn-secondary" onclick="deleteCookies()">Remove</button>
+  </div>
+  <div id="cookie-result"></div>
+  <p class="hint">
+    Log in to YouTube, export cookies for youtube.com with a cookies.txt extension
+    (e.g. “Get cookies.txt LOCALLY”), then upload the file above.
+  </p>
+</form>
+</details>
+
+<p class="hint">
+  Either way, these cookies are a full login session for that YouTube account —
+  prefer a throwaway account, and resend every few weeks when they expire.
+</p>
