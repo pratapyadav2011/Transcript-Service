@@ -74,9 +74,11 @@ def transcribe_url_task(
             done = fastpath.try_civicclerk_captions(
                 job_id, log, url, meeting_id, transcript_id, actor
             )
-        if done is None and not is_youtube_url(url):
+        if done is None:
             # Use the resolved URL: Vimeo's public page extractor can fail with
             # OAuth 401 while its embedded player exposes subtitles normally.
+            # For YouTube this is the fallback when youtube-transcript-api is
+            # IP-blocked: yt-dlp goes through the configured cookies/proxy.
             done = fastpath.try_subtitles(
                 job_id, log, candidates[0], meeting_id, transcript_id, actor
             )

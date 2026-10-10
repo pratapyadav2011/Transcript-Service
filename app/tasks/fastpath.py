@@ -27,7 +27,7 @@ def try_captions(job_id, log, url, meeting_id, transcript_id, actor) -> dict | N
     log(STEP_TRANSCRIBING, "Checking for existing YouTube captions...")
     captions = fetch_captions(url, log=lambda m: log(STEP_TRANSCRIBING, m))
     if not captions:
-        log(STEP_DOWNLOADING, "No captions found — downloading audio for transcription...")
+        log(STEP_TRANSCRIBING, "No captions via transcript API — trying yt-dlp...")
         return None
     log(STEP_SAVING, f"Using YouTube captions ({len(captions)} chars)...")
     return _finalize(job_id, meeting_id, transcript_id, actor, url, captions, "captions")
