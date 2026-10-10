@@ -44,5 +44,7 @@ def fetch_captions(url: str, log: Callable[[str], None] | None = None) -> str | 
     except Exception as exc:  # network / parsing / blocked — fall back to audio
         logger.warning("Caption fetch failed for %s: %s", video_id, exc)
         if log:
-            log(f"Caption fetch failed ({str(exc)[:120]}); falling back to audio.")
+            # The exception text starts with a long generic preamble; the class
+            # name (e.g. RequestBlocked / IpBlocked) is the useful part.
+            log(f"Caption fetch failed ({type(exc).__name__}).")
         return None

@@ -18,9 +18,8 @@ import logging
 import subprocess
 from typing import Callable
 
-from app.core.config import settings
 from app.services.downloader.binary_finder import find_ytdlp
-from app.services.downloader import cookie_store
+from app.services.downloader.ytdlp_downloader import access_args
 from app.services.resolver.url_classifier import is_youtube_url
 
 logger = logging.getLogger(__name__)
@@ -43,23 +42,26 @@ def fetch_subtitles(url: str, log: Callable[[str], None] | None = None) -> str |
     args = [
         ytdlp, "--skip-download", "--write-subs",
         "--sub-langs", "en.*", "--sub-format", "vtt/srt/best",
-        "--no-warnings", "-o", os.path.join(tmp, "s.%(ext)s"), url,
+        "-o", os.path.join(tmp, "s.%(ext)s"), url,
     ]
     if is_youtube_url(url):
         # Many YouTube meeting videos only have auto-generated captions;
         # yt-dlp still prefers a manual track when one exists.
         args[1:1] = ["--write-auto-subs"]
-    if settings.MEDIA_PROXY_URL:
-        args[1:1] = ["--proxy", settings.MEDIA_PROXY_URL]
     # Caption listing hits the same bot wall as the media download on YouTube.
-    cookies_file = cookie_store.active_path()
-    if cookies_file:
-        args[1:1] = ["--cookies", cookies_file]
+    args[1:1] = access_args()
 
     try:
-        subprocess.run(args, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=120)
         files = glob.glob(os.path.join(tmp, "*.vtt")) + glob.glob(os.path.join(tmp, "*.srt"))
         if not files:
+            # Surface yt-dlp's reason (bot wall, 429, missing PO token...) instead
+            # of silently reporting "no captions".
+            errs = [l for l in (proc.stderr or "").splitlines() if "ERROR" in l or "WARNING" in l]
+            if errs:
+                logger.warning("yt-dlp found no subtitles for %s: %s", url, " | ".join(errs[-3:]))
+                if log:
+                    log(f"yt-dlp subtitle fetch: {errs[-1][:200]}")
             return None
         with open(files[0], encoding="utf-8", errors="ignore") as fh:
             text = _to_text(fh.read())

@@ -20,6 +20,32 @@ FORMAT_SELECTOR = "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best"
 AUDIO_FORMAT = "mp3"
 
 
+def access_args() -> list[str]:
+    """yt-dlp flags that get past YouTube's datacenter bot wall. Shared by every
+    yt-dlp call (audio download, subtitle fetch) so they behave the same."""
+    # Current yt-dlp needs a JS runtime to solve YouTube's player challenges.
+    args = ["--js-runtimes", "node"]
+    # Prefer YouTube player clients that usually dodge the PO-token / bot wall that
+    # the default web client hits from datacenter IPs. Namespaced to the youtube
+    # extractor, so it's a harmless no-op for other sites.
+    if settings.YTDLP_PLAYER_CLIENT:
+        args += [
+            "--extractor-args",
+            f"youtube:player_client={settings.YTDLP_PLAYER_CLIENT}",
+        ]
+    # YouTube blocks datacenter/VM IPs ("confirm you're not a bot"). Cookies (from
+    # the UI upload, a configured file, or a local browser) and/or a residential
+    # proxy get past it. A cookies file wins over browser extraction.
+    cookies_file = cookie_store.active_path()
+    if cookies_file:
+        args += ["--cookies", cookies_file]
+    elif settings.YTDLP_COOKIES_FROM_BROWSER:
+        args += ["--cookies-from-browser", settings.YTDLP_COOKIES_FROM_BROWSER]
+    if settings.MEDIA_PROXY_URL:
+        args += ["--proxy", settings.MEDIA_PROXY_URL]
+    return args
+
+
 def download_audio(
     binary: str,
     url: str,
@@ -35,7 +61,6 @@ def download_audio(
 
     args = [
         binary,
-        "--js-runtimes", "node",
         "--format", FORMAT_SELECTOR,
         "--extract-audio",                 # strip video → audio only
         "--audio-format", AUDIO_FORMAT,
@@ -52,25 +77,8 @@ def download_audio(
     if ffmpeg:
         args[1:1] = ["--ffmpeg-location", ffmpeg]
 
-    # Prefer YouTube player clients that usually dodge the PO-token / bot wall that
-    # the default web client hits from datacenter IPs. Namespaced to the youtube
-    # extractor, so it's a harmless no-op for other sites.
-    if settings.YTDLP_PLAYER_CLIENT:
-        args[1:1] = [
-            "--extractor-args",
-            f"youtube:player_client={settings.YTDLP_PLAYER_CLIENT}",
-        ]
-
-    # YouTube blocks datacenter/VM IPs ("confirm you're not a bot"). Cookies (from
-    # the UI upload, a configured file, or a local browser) and/or a residential
-    # proxy get past it. A cookies file wins over browser extraction.
+    args[1:1] = access_args()
     cookies_file = cookie_store.active_path()
-    if cookies_file:
-        args[1:1] = ["--cookies", cookies_file]
-    elif settings.YTDLP_COOKIES_FROM_BROWSER:
-        args[1:1] = ["--cookies-from-browser", settings.YTDLP_COOKIES_FROM_BROWSER]
-    if settings.MEDIA_PROXY_URL:
-        args[1:1] = ["--proxy", settings.MEDIA_PROXY_URL]
 
     if progress_callback:
         progress_callback(f"Running yt-dlp on: {url}")
