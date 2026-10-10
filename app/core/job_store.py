@@ -144,7 +144,11 @@ def set_job_done(job_id: str, transcript_preview: str) -> None:
     r = get_redis()
     preview = transcript_preview[:300]
     pipe = r.pipeline()
-    pipe.hset(_meta_key(job_id), mapping={"status": STEP_DONE, "transcript_preview": preview, "updated_at": _ts()})
+    # Clear any error left by an earlier failed attempt (retry/resume) so a
+    # successful job doesn't keep showing it.
+    pipe.hset(_meta_key(job_id), mapping={
+        "status": STEP_DONE, "error": "", "transcript_preview": preview, "updated_at": _ts(),
+    })
     # Standalone URL/upload jobs have no MongoDB transcript document. Keep their
     # complete result in a separate Redis key so list_jobs() remains lightweight.
     meeting_id = r.hget(_meta_key(job_id), "meeting_id") or ""
