@@ -14,6 +14,7 @@ from app.services.transcriber.subtitle_extractor import (
     fetch_subtitles, _to_text, MIN_CAPTION_CHARS,
 )
 from app.services.resolver.civicclerk_resolver import fetch_closed_captions
+from app.services.resolver import swagit_resolver
 
 
 def _finalize(job_id, meeting_id, transcript_id, actor, url, text, source) -> dict:
@@ -53,4 +54,15 @@ def try_civicclerk_captions(job_id, log, url, meeting_id, transcript_id, actor) 
         log(STEP_TRANSCRIBING, "No usable CivicClerk captions.")
         return None
     log(STEP_SAVING, f"Using CivicClerk closed captions ({len(text)} chars)...")
+    return _finalize(job_id, meeting_id, transcript_id, actor, url, text, "captions")
+
+
+def try_swagit_transcript(job_id, log, url, meeting_id, transcript_id, actor) -> dict | None:
+    """Swagit's published transcript — avoids the IP-blocked Granicus stream."""
+    log(STEP_TRANSCRIBING, "Checking for Swagit transcript...")
+    text = swagit_resolver.fetch_transcript(url) or ""
+    if len(text) < MIN_CAPTION_CHARS:
+        log(STEP_TRANSCRIBING, "No usable Swagit transcript.")
+        return None
+    log(STEP_SAVING, f"Using Swagit transcript ({len(text)} chars)...")
     return _finalize(job_id, meeting_id, transcript_id, actor, url, text, "captions")

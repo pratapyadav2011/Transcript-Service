@@ -50,6 +50,16 @@ def is_civicclerk_url(url: str) -> bool:
         return False
 
 
+def is_swagit_url(url: str) -> bool:
+    try:
+        p = urlparse(url)
+        return (p.hostname or "").lower().endswith(".swagit.com") and bool(
+            re.match(r"^/videos/\d+", p.path)
+        )
+    except Exception:
+        return False
+
+
 def is_platform_url(url: str) -> bool:
     """URLs whose media CDN requires server-side auth (cannot be fetched by Gemini directly)."""
     return is_granicus_player(url) or is_civicclerk_url(url)
