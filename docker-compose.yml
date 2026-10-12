@@ -2,8 +2,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # Never publish Redis publicly: it has no password, and open Redis ports are
+    # scanned and exploited (CONFIG SET dir + SAVE / MODULE LOAD) within hours.
+    # App containers reach it on the internal network as redis://redis:6379.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
 
@@ -61,8 +64,10 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
     command: celery -A app.core.celery_app flower --port=5555
+    # Flower has no auth and can revoke tasks / shut down workers — local only.
+    # Reach it with: ssh -L 5555:localhost:5555 <vm>
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     depends_on:
       - redis
 
