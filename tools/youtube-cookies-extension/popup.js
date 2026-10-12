@@ -1,17 +1,31 @@
-// Reads the YouTube session cookies and posts them to the transcript service as
+// Reads the YouTube and Vimeo session cookies and posts them to the transcript service as
 // a Netscape cookies.txt — the format yt-dlp's --cookies flag expects.
 // An extension can do this because chrome.cookies sees HttpOnly cookies; a normal
 // web page never can, which is why the service also accepts a manual file upload.
 
 // Chrome/Edge expose `chrome`, Firefox `browser`; both return promises here.
 const api = globalThis.browser ?? globalThis.chrome;
-const COOKIE_DOMAINS = ["youtube.com", "google.com"];
-// Any of these means a signed-in session; Google rotates which ones it sets.
-const LOGIN_COOKIES = new Set([
-  "SID", "__Secure-1PSID", "__Secure-3PSID", "SAPISID", "__Secure-3PAPISID",
-  "SSID", "HSID", "LOGIN_INFO", "APISID",
-]);
-const LOGIN_URL = "https://accounts.google.com/ServiceLogin?service=youtube";
+// One jar for both sites: yt-dlp takes a single --cookies file. `login` holds
+// the cookie names that mean a signed-in session (must match cookie_store.py).
+const SITES = [
+  {
+    name: "YouTube",
+    domains: ["youtube.com", "google.com"],
+    // Google rotates which of these it sets; any one means signed in.
+    login: new Set([
+      "SID", "__Secure-1PSID", "__Secure-3PSID", "SAPISID", "__Secure-3PAPISID",
+      "SSID", "HSID", "LOGIN_INFO", "APISID",
+    ]),
+    loginUrl: "https://accounts.google.com/ServiceLogin?service=youtube",
+  },
+  {
+    name: "Vimeo",
+    domains: ["vimeo.com"],
+    login: new Set(["vimeo"]),
+    loginUrl: "https://vimeo.com/log_in",
+  },
+];
+const COOKIE_DOMAINS = SITES.flatMap((s) => s.domains);
 const $ = (id) => document.getElementById(id);
 
 function setStatus(message, ok) {
@@ -45,29 +59,39 @@ async function collectCookies() {
   return [...byKey.values()];
 }
 
-function isLiveLoginCookie(c) {
+function isLiveLoginCookie(site, c) {
   // expirationDate is absent for session cookies, which are still valid now.
   const alive = !c.expirationDate || c.expirationDate * 1000 > Date.now();
-  return alive && LOGIN_COOKIES.has(c.name);
+  const domain = c.domain.replace(/^\./, "");
+  return alive && site.login.has(c.name) && site.domains.some((d) => domain.endsWith(d));
 }
 
-/** Show either the "log in" prompt or the send button, based on real cookies. */
+/** Names of the sites this browser has a live login session for. */
+function signedInSites(cookies) {
+  return SITES.filter((site) => cookies.some((c) => isLiveLoginCookie(site, c)))
+    .map((site) => site.name);
+}
+
+/** Show the send button if any site is signed in, plus log-in buttons for the rest. */
 async function refreshSignInState() {
   const cookies = await collectCookies();
-  const signedIn = cookies.some(isLiveLoginCookie);
+  const sites = signedInSites(cookies);
   $("checking").hidden = true;
-  $("signin").hidden = signedIn;
-  $("send").hidden = !signedIn;
-  if (signedIn) {
-    const plural = cookies.length === 1 ? "cookie" : "cookies";
-    setStatus(`Signed in to YouTube — ${cookies.length} ${plural} ready to send.`, true);
+  $("send").hidden = sites.length === 0;
+  $("signin").hidden = sites.length === SITES.length;
+  for (const site of SITES) {
+    $(`login-${site.name.toLowerCase()}`).hidden = sites.includes(site.name);
   }
-  return signedIn;
+  if (sites.length) {
+    const plural = cookies.length === 1 ? "cookie" : "cookies";
+    setStatus(`Signed in to ${sites.join(" + ")} — ${cookies.length} ${plural} ready to send.`, true);
+  }
+  return sites.length > 0;
 }
 
-function openLogin() {
-  if (api.tabs && api.tabs.create) api.tabs.create({ url: LOGIN_URL });
-  else window.open(LOGIN_URL, "_blank");
+function openLogin(url) {
+  if (api.tabs && api.tabs.create) api.tabs.create({ url });
+  else window.open(url, "_blank");
   // The popup closes when focus moves to the new tab; reopening re-checks.
   window.close();
 }
@@ -83,9 +107,9 @@ async function send() {
   setStatus("Collecting cookies…", true);
   try {
     const cookies = await collectCookies();
-    if (!cookies.some(isLiveLoginCookie)) {
+    if (!signedInSites(cookies).length) {
       await refreshSignInState();
-      throw new Error("That YouTube session ended — log in again.");
+      throw new Error("No signed-in YouTube or Vimeo session — log in again.");
     }
 
     await api.storage.local.set({ base });
@@ -109,7 +133,8 @@ async function send() {
     const expires = data.expires_at
       ? ` Valid until ${new Date(data.expires_at * 1000).toLocaleDateString()}.`
       : "";
-    setStatus(`✓ Sent ${data.count} ${data.count === 1 ? "cookie" : "cookies"}.${expires}`, true);
+    const sites = data.sites && data.sites.length ? ` for ${data.sites.join(" + ")}` : "";
+    setStatus(`✓ Sent ${data.count} ${data.count === 1 ? "cookie" : "cookies"}${sites}.${expires}`, true);
   } catch (err) {
     setStatus(`✗ ${err.message}`, false);
   } finally {
@@ -122,5 +147,7 @@ api.storage.local.get(["base"]).then(({ base }) => {
   $("url").value = base || (globalThis.TS_CONFIG || {}).serviceUrl || "";
 });
 $("send").addEventListener("click", send);
-$("login").addEventListener("click", openLogin);
+for (const site of SITES) {
+  $(`login-${site.name.toLowerCase()}`).addEventListener("click", () => openLogin(site.loginUrl));
+}
 refreshSignInState();

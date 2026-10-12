@@ -1,5 +1,5 @@
 """
-Packages the YouTube-cookie browser extension for download from the UI.
+Packages the YouTube/Vimeo-cookie browser extension for download from the UI.
 
 Chrome has not allowed a web page to install an extension since 2018 (inline
 installation was removed), and a self-hosted .crx is rejected outside the Web

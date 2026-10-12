@@ -1,7 +1,9 @@
-# YouTube cookies → Transcript Service (Chrome/Edge extension)
+# YouTube & Vimeo cookies → Transcript Service (Chrome/Edge extension)
 
-One click sends your logged-in YouTube cookies to the transcript service, so
-yt-dlp stops hitting "Sign in to confirm you're not a bot".
+One click sends your logged-in YouTube and Vimeo cookies to the transcript
+service, so yt-dlp stops hitting YouTube's "Sign in to confirm you're not a bot"
+and Vimeo's "401 Unauthorized" from datacenter IPs. Both go into the one
+cookies file yt-dlp uses; you can be signed in to either site or both.
 
 A page served by the transcript service cannot do this itself: browsers forbid
 any site from reading another site's cookies, and Google's session cookies are
@@ -18,9 +20,10 @@ any site from reading another site's cookies, and Google's session cookies are
 
 ## Use
 
-1. Click the extension icon. It checks your YouTube session first:
-   - **Not signed in** → it shows only a **Log in to YouTube** button.
-   - **Signed in** → it shows **Send cookies** and how many are ready.
+1. Click the extension icon. It checks your YouTube and Vimeo sessions first:
+   - **Signed in to neither** → it shows **Log in to YouTube** / **Log in to Vimeo**.
+   - **Signed in to one or both** → it shows **Send cookies**, which sites are
+     covered, and a log-in button for any site still missing.
 2. If prompted, log in, then click the icon again.
 3. Click **Send cookies**. It reports how many cookies were stored and when they
    expire.

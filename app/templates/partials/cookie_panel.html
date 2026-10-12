@@ -1,10 +1,10 @@
-{# YouTube cookie jar. `rerun_job_id` (optional) makes the save button requeue
+{# YouTube / Vimeo cookie jar. `rerun_job_id` (optional) makes the save button requeue
    that job once the cookies are stored. #}
 <div id="cookie-status" class="cookie-status">Checking…</div>
 <div class="cookie-install">
   <strong>One click, every time: install the helper extension</strong>
   <p class="hint">
-    Browsers forbid a web page from reading youtube.com cookies, so this page cannot
+    Browsers forbid a web page from reading youtube.com / vimeo.com cookies, so this page cannot
     grab them itself — the extension can, and it arrives already pointed at this server.
   </p>
   <ol class="cookie-steps">
@@ -12,7 +12,8 @@
         then unzip it.</li>
     <li>Open <code>chrome://extensions</code> and turn on <strong>Developer mode</strong>.</li>
     <li>Click <strong>Load unpacked</strong> and pick the unzipped folder.</li>
-    <li>Log in to YouTube, click the extension icon, click <strong>Send cookies</strong>.</li>
+    <li>Log in to YouTube and/or Vimeo, click the extension icon, click <strong>Send cookies</strong>.
+        Already installed? Download and load it again to add Vimeo support.</li>
   </ol>
   <p class="hint">Chrome removed installing extensions from web pages in 2018, so this
     is the shortest path a self-hosted service can offer. Works in Edge and Firefox too.</p>
@@ -38,13 +39,13 @@
   </div>
   <div id="cookie-result"></div>
   <p class="hint">
-    Log in to YouTube, export cookies for youtube.com with a cookies.txt extension
-    (e.g. “Get cookies.txt LOCALLY”), then upload the file above.
+    Log in to YouTube and/or Vimeo, export cookies for youtube.com and vimeo.com with a
+    cookies.txt extension (e.g. “Get cookies.txt LOCALLY”) into one file, then upload it above.
   </p>
 </form>
 </details>
 
 <p class="hint">
-  Either way, these cookies are a full login session for that YouTube account —
+  Either way, these cookies are a full login session for those YouTube/Vimeo accounts —
   prefer a throwaway account, and resend every few weeks when they expire.
 </p>

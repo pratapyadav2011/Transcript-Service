@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8" />
-<title>Send YouTube cookies</title>
+<title>Send YouTube & Vimeo cookies</title>
 <style>
   body { width: 290px; margin: 0; padding: 14px; background: #0f1220; color: #e6e9f2;
          font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
@@ -18,18 +18,20 @@
   .warn { margin: 0 0 9px; padding: 8px 10px; border-radius: 7px; font-size: 12px;
           background: rgba(245,166,35,.12); color: #f5a623; }
   #checking { color: #9aa3bd; font-size: 12px; }
+  .login { margin-bottom: 9px; background: #2c3350; }
 </style>
-<h1>Send YouTube cookies</h1>
+<h1>Send YouTube &amp; Vimeo cookies</h1>
 <label>Transcript service URL
   <input id="url" type="url" placeholder="https://transcripts.example.com" />
 </label>
 <div id="signin" hidden>
-  <p class="warn">Not signed in to YouTube in this browser.</p>
-  <button id="login">Log in to YouTube</button>
+  <p class="warn">Log in to each site you need downloads from:</p>
+  <button id="login-youtube" class="login">Log in to YouTube</button>
+  <button id="login-vimeo" class="login">Log in to Vimeo</button>
 </div>
 <button id="send" hidden>Send cookies</button>
-<div id="checking">Checking YouTube sign-in…</div>
+<div id="checking">Checking YouTube / Vimeo sign-in…</div>
 <div id="status"></div>
-<p class="hint">Settings are saved locally. Log in to YouTube first, then click Send.</p>
+<p class="hint">Settings are saved locally. Log in to YouTube and/or Vimeo first, then click Send.</p>
 <script src="config.js"></script>
 <script src="popup.js"></script>

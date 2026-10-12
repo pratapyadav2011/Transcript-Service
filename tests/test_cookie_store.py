@@ -52,7 +52,7 @@ def test_rejects_file_without_login_cookies():
 
 
 def test_rejects_unrelated_domain():
-    with pytest.raises(InvalidCookiesFile, match="No youtube.com or google.com"):
+    with pytest.raises(InvalidCookiesFile, match="No YouTube or Vimeo cookies"):
         cookie_store.validate(_jar(domain=".example.com"))
 
 
@@ -91,3 +91,21 @@ def test_missing_env_file_falls_back_to_upload(monkeypatch):
     monkeypatch.setattr(settings, "YTDLP_COOKIES_FILE", "/nonexistent/cookies.txt")
     cookie_store.save(_jar())
     assert cookie_store.active_path() == cookie_store.upload_path()
+
+
+def test_vimeo_only_jar_is_accepted():
+    summary = cookie_store.validate(_jar(name="vimeo", domain=".vimeo.com"))
+    assert summary["sites"] == ["Vimeo"]
+    assert summary["count"] == 2
+
+
+def test_vimeo_visitor_cookie_is_not_a_session():
+    with pytest.raises(InvalidCookiesFile, match="not from a signed-in session"):
+        cookie_store.validate(_jar(name="vuid", domain=".vimeo.com"))
+
+
+def test_combined_jar_reports_both_sites():
+    jar = _jar() + f".vimeo.com\tTRUE\t/\tTRUE\t{FUTURE}\tvimeo\tsession\n"
+    summary = cookie_store.validate(jar)
+    assert summary["sites"] == ["YouTube", "Vimeo"]
+    assert summary["count"] == 3

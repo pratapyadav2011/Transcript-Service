@@ -185,7 +185,7 @@ async function retryWithGemini(jobId) {
   }
 }
 
-// ── YouTube cookie jar ──────────────────────────────────────────────────────
+// ── YouTube / Vimeo cookie jar ──────────────────────────────────────────────────────
 // A page cannot read youtube.com cookies itself (cross-origin + HttpOnly), so
 // the user exports cookies.txt from their browser and hands us the file.
 
@@ -194,7 +194,7 @@ function renderCookieStatus(data) {
   if (!el) return;
   if (!data.present) {
     el.className = 'cookie-status';
-    el.textContent = 'No cookies stored — YouTube downloads may hit the bot check.';
+    el.textContent = 'No cookies stored — YouTube/Vimeo downloads may hit the bot check.';
     return;
   }
   const when = new Date(data.updated_at * 1000).toLocaleString();
@@ -209,7 +209,8 @@ function renderCookieStatus(data) {
     return;
   }
   el.className = 'cookie-status cookie-status-ok';
-  el.textContent = `${data.count} cookies stored ${data.managed ? '' : '(set by env config) '}` +
+  const sites = data.sites && data.sites.length ? ` for ${data.sites.join(' + ')}` : '';
+  el.textContent = `${data.count} cookies stored${sites} ${data.managed ? '' : '(set by env config) '}` +
     `· updated ${when} · expires ${expires}`;
 }
 

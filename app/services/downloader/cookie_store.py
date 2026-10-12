@@ -1,11 +1,15 @@
 """
-Stores the Netscape cookies.txt that yt-dlp uses for YouTube.
+Stores the Netscape cookies.txt that yt-dlp uses for YouTube and Vimeo.
 
 YouTube blocks datacenter/VM IPs with "Sign in to confirm you're not a bot", and
 the only fix that does not need a residential proxy is a logged-in cookie jar.
 A browser page cannot read youtube.com cookies (they are cross-origin and
 HttpOnly), so the user exports them with a cookies.txt browser extension and
 hands the file to the UI; this module is where that file lands.
+
+Vimeo similarly rejects datacenter IPs (401 on the player page), and a
+logged-in vimeo.com session gets past it. Both sites share this one file because
+yt-dlp takes a single --cookies jar.
 
 The worker reads the same path through the shared uploads volume, so an upload
 takes effect on the next job without a restart.
@@ -29,7 +33,13 @@ LOGIN_COOKIE_NAMES = {
     "SID", "__Secure-1PSID", "__Secure-3PSID", "SAPISID", "__Secure-3PAPISID",
     "SSID", "HSID", "LOGIN_INFO", "APISID",
 }
-COOKIE_DOMAINS = ("youtube.com", "google.com")
+# Sites a jar can carry a session for: (cookie domains, login cookie names).
+# yt-dlp itself treats a `vimeo` cookie on vimeo.com as a logged-in session.
+SITES = {
+    "YouTube": (("youtube.com", "google.com"), LOGIN_COOKIE_NAMES),
+    "Vimeo": (("vimeo.com",), {"vimeo"}),
+}
+COOKIE_DOMAINS = tuple(d for domains, _ in SITES.values() for d in domains)
 
 
 class InvalidCookiesFile(ValueError):
@@ -80,7 +90,7 @@ def _parse(text: str) -> list[dict]:
 
 
 def validate(text: str) -> dict:
-    """Check that `text` is a usable YouTube cookie jar; return a summary."""
+    """Check that `text` is a usable YouTube/Vimeo cookie jar; return a summary."""
     if len(text.encode("utf-8")) > MAX_COOKIES_BYTES:
         raise InvalidCookiesFile("That file is too large to be a cookies.txt.")
 
@@ -95,20 +105,29 @@ def validate(text: str) -> dict:
     if not relevant:
         found = sorted({r["domain"] for r in rows})[:3]
         raise InvalidCookiesFile(
-            f"No youtube.com or google.com cookies in that file (found: {', '.join(found)}). "
-            "Export the cookies while youtube.com is the open tab."
+            f"No YouTube or Vimeo cookies in that file (found: {', '.join(found)}). "
+            "Export the cookies while youtube.com or vimeo.com is the open tab."
         )
 
-    names = {r["name"] for r in relevant}
-    if not (names & LOGIN_COOKIE_NAMES):
+    # Login cookies per site; a jar is usable if any site has a session.
+    login_rows = {
+        site: [r for r in relevant if r["domain"].endswith(domains) and r["name"] in names]
+        for site, (domains, names) in SITES.items()
+    }
+    sites = [site for site, found in login_rows.items() if found]
+    if not sites:
         raise InvalidCookiesFile(
             "These cookies are not from a signed-in session. Log in to YouTube "
-            "first, then export the cookies again."
+            "or Vimeo first, then export the cookies again."
         )
 
     # Report the soonest expiry among session cookies so the UI can warn early.
-    expiries = [r["expires"] for r in relevant if r["name"] in LOGIN_COOKIE_NAMES and r["expires"]]
-    return {"count": len(relevant), "expires_at": min(expiries) if expiries else 0}
+    expiries = [r["expires"] for site in sites for r in login_rows[site] if r["expires"]]
+    return {
+        "count": len(relevant),
+        "expires_at": min(expiries) if expiries else 0,
+        "sites": sites,
+    }
 
 
 def save(text: str) -> dict:
@@ -128,7 +147,7 @@ def save(text: str) -> dict:
     os.chmod(tmp, 0o600)
     os.replace(tmp, dest)
 
-    logger.info("Stored %d YouTube cookies at %s", summary["count"], dest)
+    logger.info("Stored %d cookies (%s) at %s", summary["count"], ", ".join(summary["sites"]), dest)
     return status()
 
 
