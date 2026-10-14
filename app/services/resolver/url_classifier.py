@@ -27,6 +27,9 @@ def is_vimeo_url(url: str) -> bool:
         return False
 
 
+GRANICUS_VIDEOS_PATH = re.compile(r"^/videos/(\d+)(?:/player)?/?$", re.IGNORECASE)
+
+
 def is_granicus_player(url: str) -> bool:
     try:
         p = urlparse(url)
@@ -34,6 +37,9 @@ def is_granicus_player(url: str) -> bool:
             return False
         path = p.path.lower()
         if "/player/clip/" in path:
+            return True
+        # Newer Granicus pages: /videos/{id} (wrapper) and /videos/{id}/player.
+        if GRANICUS_VIDEOS_PATH.match(p.path):
             return True
         # Legacy Granicus sites expose downloadLinks from MediaPlayer.php.
         return path.endswith("/mediaplayer.php") and bool(

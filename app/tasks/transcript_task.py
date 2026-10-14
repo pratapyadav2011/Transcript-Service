@@ -26,6 +26,7 @@ from app.tasks import hooks, fastpath
 from app.services.resolver.media_resolver import resolve_candidates
 from app.services.resolver.url_classifier import (
     is_direct_media_url, is_youtube_url, is_civicclerk_url, is_swagit_url,
+    is_granicus_player,
 )
 from app.services.downloader.audio_pipeline import acquire_audio, cleanup
 from app.services.downloader.ffmpeg_extractor import extract_audio_from_upload
@@ -76,6 +77,10 @@ def transcribe_url_task(
             )
         elif is_swagit_url(url):
             done = fastpath.try_swagit_transcript(
+                job_id, log, url, meeting_id, transcript_id, actor
+            )
+        elif is_granicus_player(url):
+            done = fastpath.try_granicus_captions(
                 job_id, log, url, meeting_id, transcript_id, actor
             )
         if done is None:
