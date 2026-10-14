@@ -71,6 +71,20 @@ services:
     depends_on:
       - redis
 
+  # Optional: VM end of the home residential proxy (home-proxy/ runs the other
+  # end on your home machine). Cloudflare TCP tunnels need this client on the
+  # calling side; it exposes the tunnel as a plain proxy at cf-proxy:8888.
+  # Only starts with COMPOSE_PROFILES=home-proxy in .env.
+  cf-proxy:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["home-proxy"]
+    command: >
+      access tcp --hostname ${CF_PROXY_HOSTNAME:-}
+      --url 0.0.0.0:8888
+      --service-token-id ${CF_ACCESS_CLIENT_ID:-}
+      --service-token-secret ${CF_ACCESS_CLIENT_SECRET:-}
+
 volumes:
   redis-data:
   whisper-models:

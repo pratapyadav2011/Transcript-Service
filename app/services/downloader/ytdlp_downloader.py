@@ -20,9 +20,12 @@ FORMAT_SELECTOR = "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best"
 AUDIO_FORMAT = "mp3"
 
 
-def access_args() -> list[str]:
+def access_args(proxy: str | None = None) -> list[str]:
     """yt-dlp flags that get past YouTube's datacenter bot wall. Shared by every
-    yt-dlp call (audio download, subtitle fetch) so they behave the same."""
+    yt-dlp call (audio download, subtitle fetch) so they behave the same.
+
+    `proxy` is only passed on the retry after a block (see proxy_fallback), so
+    first attempts always go out from the server's own IP."""
     # Current yt-dlp needs a JS runtime to solve YouTube's player challenges.
     args = ["--js-runtimes", "node"]
     # Prefer YouTube player clients that usually dodge the PO-token / bot wall that
@@ -41,8 +44,8 @@ def access_args() -> list[str]:
         args += ["--cookies", cookies_file]
     elif settings.YTDLP_COOKIES_FROM_BROWSER:
         args += ["--cookies-from-browser", settings.YTDLP_COOKIES_FROM_BROWSER]
-    if settings.MEDIA_PROXY_URL:
-        args += ["--proxy", settings.MEDIA_PROXY_URL]
+    if proxy:
+        args += ["--proxy", proxy]
     return args
 
 
@@ -50,6 +53,7 @@ def download_audio(
     binary: str,
     url: str,
     progress_callback: Callable[[str], None] | None = None,
+    proxy: str | None = None,
 ) -> str:
     """
     Download a URL and return the path to an AUDIO-ONLY file.
@@ -77,7 +81,7 @@ def download_audio(
     if ffmpeg:
         args[1:1] = ["--ffmpeg-location", ffmpeg]
 
-    args[1:1] = access_args()
+    args[1:1] = access_args(proxy)
     cookies_file = cookie_store.active_path()
 
     if progress_callback:

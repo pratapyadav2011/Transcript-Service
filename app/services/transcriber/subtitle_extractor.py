@@ -20,6 +20,7 @@ from typing import Callable
 
 from app.services.downloader.binary_finder import find_ytdlp
 from app.services.downloader.ytdlp_downloader import access_args
+from app.services.downloader import proxy_fallback
 from app.services.resolver.url_classifier import is_youtube_url
 
 logger = logging.getLogger(__name__)
@@ -39,25 +40,34 @@ def fetch_subtitles(url: str, log: Callable[[str], None] | None = None) -> str |
         return None
 
     tmp = tempfile.mkdtemp(prefix="transcript_subs_")
-    args = [
-        ytdlp, "--skip-download", "--write-subs",
-        "--sub-langs", "en.*", "--sub-format", "vtt/srt/best",
-        "-o", os.path.join(tmp, "s.%(ext)s"), url,
-    ]
-    if is_youtube_url(url):
-        # Many YouTube meeting videos only have auto-generated captions;
-        # yt-dlp still prefers a manual track when one exists.
-        args[1:1] = ["--write-auto-subs"]
-    # Caption listing hits the same bot wall as the media download on YouTube.
-    args[1:1] = access_args()
 
-    try:
+    def run(proxy: str | None) -> tuple[list[str], list[str]]:
+        args = [
+            ytdlp, "--skip-download", "--write-subs",
+            "--sub-langs", "en.*", "--sub-format", "vtt/srt/best",
+            "-o", os.path.join(tmp, "s.%(ext)s"), url,
+        ]
+        if is_youtube_url(url):
+            # Many YouTube meeting videos only have auto-generated captions;
+            # yt-dlp still prefers a manual track when one exists.
+            args[1:1] = ["--write-auto-subs"]
+        # Caption listing hits the same bot wall as the media download on YouTube.
+        args[1:1] = access_args(proxy)
         proc = subprocess.run(args, capture_output=True, text=True, timeout=120)
         files = glob.glob(os.path.join(tmp, "*.vtt")) + glob.glob(os.path.join(tmp, "*.srt"))
+        errs = [l for l in (proc.stderr or "").splitlines() if "ERROR" in l or "WARNING" in l]
+        return files, errs
+
+    try:
+        files, errs = run(None)
+        if not files and errs and proxy_fallback.should_retry_via_proxy(" ".join(errs)):
+            if log:
+                log(f"Subtitles blocked from this server's IP "
+                    f"({proxy_fallback.short_reason(errs[-1])}) — retrying via proxy...")
+            files, errs = run(proxy_fallback.proxy_url())
         if not files:
             # Surface yt-dlp's reason (bot wall, 429, missing PO token...) instead
             # of silently reporting "no captions".
-            errs = [l for l in (proc.stderr or "").splitlines() if "ERROR" in l or "WARNING" in l]
             if errs:
                 logger.warning("yt-dlp found no subtitles for %s: %s", url, " | ".join(errs[-3:]))
                 if log:

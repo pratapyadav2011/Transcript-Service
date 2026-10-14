@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 from typing import Callable
 import requests
 
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +69,7 @@ def download_direct(
     url: str,
     progress_callback: Callable[[str], None] | None = None,
     referer: str | None = None,
+    proxy: str | None = None,
 ) -> str:
     """
     Download a direct media URL to a temp file.
@@ -84,12 +84,8 @@ def download_direct(
 
     logger.info("Downloading direct media: %s", url)
 
-    proxies = None
-    if settings.MEDIA_PROXY_URL:
-        proxies = {
-            "http": settings.MEDIA_PROXY_URL,
-            "https": settings.MEDIA_PROXY_URL,
-        }
+    # Only set on the retry after an IP block (see proxy_fallback).
+    proxies = {"http": proxy, "https": proxy} if proxy else None
 
     try:
         _download_to(dest, url, proxies, referer, progress_callback)

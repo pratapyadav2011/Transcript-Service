@@ -13,6 +13,8 @@ from typing import Callable
 from youtube_transcript_api import (
     YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound,
 )
+from youtube_transcript_api.proxies import GenericProxyConfig
+from app.services.downloader import proxy_fallback
 from app.services.resolver.url_classifier import YOUTUBE_PATTERN
 
 logger = logging.getLogger(__name__)
@@ -25,13 +27,32 @@ def _video_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _fetch(video_id: str, proxy: str | None):
+    api = YouTubeTranscriptApi(
+        proxy_config=GenericProxyConfig(http_url=proxy, https_url=proxy) if proxy else None
+    )
+    return api.fetch(video_id, languages=PREFERRED_LANGS)
+
+
 def fetch_captions(url: str, log: Callable[[str], None] | None = None) -> str | None:
     """Return the joined caption text for a YouTube URL, or None if unavailable."""
     video_id = _video_id(url)
     if not video_id:
         return None
     try:
-        fetched = YouTubeTranscriptApi().fetch(video_id, languages=PREFERRED_LANGS)
+        try:
+            fetched = _fetch(video_id, proxy=None)
+        except (TranscriptsDisabled, NoTranscriptFound):
+            raise
+        except Exception as exc:
+            # YouTube blocks the transcript endpoint from datacenter IPs
+            # (RequestBlocked / IpBlocked); retry once via the residential proxy.
+            if not proxy_fallback.should_retry_via_proxy(exc):
+                raise
+            if log:
+                log(f"Caption API blocked from this server's IP ({type(exc).__name__}) "
+                    "— retrying via proxy...")
+            fetched = _fetch(video_id, proxy=proxy_fallback.proxy_url())
         text = "\n".join(s.text for s in fetched if s.text and s.text.strip())
         text = text.strip()
         if text and log:

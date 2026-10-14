@@ -15,6 +15,7 @@ from app.services.downloader.binary_finder import find_ytdlp, find_ffmpeg
 from app.services.downloader.ytdlp_downloader import download_audio
 from app.services.downloader.direct_downloader import download_direct
 from app.services.downloader.ffmpeg_extractor import extract_audio
+from app.services.downloader import proxy_fallback
 from app.services.resolver.url_classifier import is_direct_media_url, is_hls_url
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,22 @@ def _final_acquisition_error(original_url: str, errors: list[str]) -> str:
         f"Original URL: {original_url}. "
         f"Errors: {' | '.join(errors)}"
     )
+
+
+def _direct_first(attempt: Callable[[str | None], str], log: Step) -> str:
+    """Run `attempt(proxy)` from the server's IP; if the site blocks that IP and a
+    proxy is configured, retry once through the proxy."""
+    try:
+        return attempt(None)
+    except Exception as exc:
+        if not proxy_fallback.should_retry_via_proxy(exc):
+            raise
+        log(f"Blocked from this server's IP ({proxy_fallback.short_reason(exc)}) — "
+            "retrying via proxy...")
+        try:
+            return attempt(proxy_fallback.proxy_url())
+        except Exception as proxy_exc:
+            raise RuntimeError(f"via proxy: {proxy_exc}") from proxy_exc
 
 
 def _ensure_audio(path: str, ffmpeg: str | None, log: Step) -> str:
@@ -88,10 +105,14 @@ def acquire_audio(
             continue
         try:
             log(f"Trying direct download: {candidate}")
-            path = download_direct(
-                candidate,
-                progress_callback=log,
-                referer=original_url,
+            path = _direct_first(
+                lambda proxy, candidate=candidate: download_direct(
+                    candidate,
+                    progress_callback=log,
+                    referer=original_url,
+                    proxy=proxy,
+                ),
+                log,
             )
             log(f"Direct download succeeded: {path}")
             return _ensure_audio(path, ffmpeg, log)
@@ -109,7 +130,12 @@ def acquire_audio(
         for url in urls_to_try:
             try:
                 log(f"Trying yt-dlp on: {url}")
-                path = download_audio(ytdlp, url, progress_callback=log)
+                path = _direct_first(
+                    lambda proxy, url=url: download_audio(
+                        ytdlp, url, progress_callback=log, proxy=proxy
+                    ),
+                    log,
+                )
                 log(f"yt-dlp succeeded: {path}")
                 return path
             except Exception as exc:
