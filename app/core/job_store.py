@@ -225,6 +225,37 @@ def get_job_transcript(job_id: str) -> str:
     return get_redis().get(_transcript_key(job_id)) or ""
 
 
+# A running job logs at least every few minutes; one silent this long is dead
+# (worker killed) and must not block resubmission. Queued/paused jobs legitimately
+# sit idle, so they are never treated as stale.
+ACTIVE_JOB_STALE_SECONDS = 3 * 3600
+
+
+def _age_seconds(ts: str) -> float:
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def find_active_job(meeting_id: str = "", source: str = "") -> dict | None:
+    """The newest unfinished job for this meeting (or, without a meeting, this URL)."""
+    for job in list_jobs(limit=200):
+        status = job.get("status")
+        if status in TERMINAL_STATUSES:
+            continue
+        if meeting_id:
+            if job.get("meeting_id") != meeting_id:
+                continue
+        elif not source or job.get("source") != source:
+            continue
+        if status not in (STEP_QUEUED, STEP_PAUSED) and \
+                _age_seconds(job.get("updated_at", "")) > ACTIVE_JOB_STALE_SECONDS:
+            continue
+        return job
+    return None
+
+
 def list_jobs(limit: int = 100) -> list[dict]:
     r = get_redis()
     job_ids = r.zrevrange("jobs:index", 0, limit - 1)

@@ -89,6 +89,10 @@ class Settings:
     # job restarts from scratch; without a cap a deterministic crash loops forever.
     # 2 tolerates one benign worker loss (deploy/restart) before failing the job.
     MAX_TASK_DELIVERIES: int = int(os.getenv("MAX_TASK_DELIVERIES", "2"))
+    # Redis re-issues an unacknowledged task after this long, assuming its worker
+    # died. With acks_late a long job (queue wait + download + Whisper) can exceed
+    # Redis' 1-hour default and run twice, so keep this above the longest job.
+    TASK_VISIBILITY_TIMEOUT_SECONDS: int = int(os.getenv("TASK_VISIBILITY_TIMEOUT_SECONDS", str(24 * 3600)))
 
     # Recycle a worker child once its resident memory exceeds this (MB) — a
     # belt-and-suspenders guard against gradual leaks across tasks. 0 disables.

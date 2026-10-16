@@ -25,6 +25,9 @@ celery_app.conf.update(
     # worker died (incl. OOM SIGKILL). Combined with acks_late that can loop a
     # deterministic crash forever, so tasks cap redeliveries via MAX_TASK_DELIVERIES.
     task_reject_on_worker_lost=True,
+    # acks_late keeps the message unacked until the task finishes; Redis' default
+    # 1h visibility timeout would hand a still-running long job to a second worker.
+    broker_transport_options={"visibility_timeout": settings.TASK_VISIBILITY_TIMEOUT_SECONDS},
 )
 
 # Recycle a child that has grown past the configured resident-memory ceiling.

@@ -23,6 +23,7 @@ from app.core.job_store import (
 )
 from app.tasks.transcript_task import transcribe_url_task, retry_cached_audio_task
 from app.tasks import hooks
+from app.api.routers.transcript_router import reject_if_in_progress
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -121,6 +122,7 @@ def rerun_job(job_id: str):
             status_code=400,
             detail="Only URL jobs can be rerun (uploaded files are deleted after processing).",
         )
+    reject_if_in_progress(meeting_id=job.get("meeting_id", ""), source=job["source"])
     new_id = str(uuid.uuid4())
     job_store.create_job(
         job_id=new_id,

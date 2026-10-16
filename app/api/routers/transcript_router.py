@@ -70,6 +70,22 @@ def find_media_links(body: UrlRequest):
     return {"source_url": body.url, "links": links}
 
 
+def reject_if_in_progress(meeting_id: str = "", source: str = "") -> None:
+    """409 when the same meeting/URL is already queued or processing, so a
+    double-click (or a second request) can't run the same transcript twice."""
+    active = job_store.find_active_job(meeting_id=meeting_id, source=source)
+    if active:
+        what = "this meeting" if meeting_id else "this URL"
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"A transcript job for {what} is already {active.get('status', 'in progress').lower()} "
+                f"(job {active.get('job_id', '')[:8]}). Wait for it to finish, or stop it first."
+            ),
+            headers={"X-Active-Job-Id": active.get("job_id", "")},
+        )
+
+
 @router.post("/meeting")
 def submit_meeting(body: MeetingRequest):
     """Single entry point for the Next.js app: send a meeting_id, the service
@@ -78,6 +94,7 @@ def submit_meeting(body: MeetingRequest):
         url = mongo_writer.get_meeting_video_url(body.meeting_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    reject_if_in_progress(meeting_id=body.meeting_id, source=url)
 
     job_id = str(uuid.uuid4())
     job_store.create_job(
@@ -99,6 +116,7 @@ def submit_meeting(body: MeetingRequest):
 
 @router.post("/url")
 def submit_url(body: UrlRequest):
+    reject_if_in_progress(meeting_id=body.meeting_id, source=body.url)
     job_id = str(uuid.uuid4())
     job_store.create_job(
         job_id=job_id,

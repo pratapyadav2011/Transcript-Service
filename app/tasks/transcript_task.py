@@ -20,6 +20,7 @@ from app.core.job_store import (
     set_transcription_retry, clear_transcription_retry, register_delivery,
     STEP_RESOLVING, STEP_FOUND, STEP_DOWNLOADING,
     STEP_EXTRACTING, STEP_UPLOADING, STEP_TRANSCRIBING, STEP_SAVING, STEP_FAILED,
+    TERMINAL_STATUSES, get_job,
 )
 from app.tasks.control import checkpoint, make_logger, StopRequested
 from app.tasks import hooks, fastpath
@@ -54,6 +55,8 @@ def transcribe_url_task(
     audio_path: str | None = None
     preserve_audio = False
     try:
+        if _already_finished(job_id):
+            return {"status": "duplicate_skipped"}
         if _abort_if_crash_looping(job_id, log, meeting_id, actor):
             return {"status": "failed", "reason": "too_many_deliveries"}
         transcript_id = _begin(job_id, meeting_id)
@@ -168,6 +171,8 @@ def transcribe_upload_task(
     audio_path: str | None = None
     preserve_audio = False
     try:
+        if _already_finished(job_id):
+            return {"status": "duplicate_skipped"}
         if _abort_if_crash_looping(job_id, log, meeting_id, actor):
             return {"status": "failed", "reason": "too_many_deliveries"}
         transcript_id = _begin(job_id, meeting_id)
@@ -222,6 +227,9 @@ def retry_cached_audio_task(
     log = make_logger(job_id, logger)
     preserve_audio = False
     try:
+        if _already_finished(job_id):
+            preserve_audio = True  # the original run owns the audio's cleanup
+            return {"status": "duplicate_skipped"}
         if _abort_if_crash_looping(job_id, log, meeting_id, actor):
             # Keep the cached audio so the failure is recoverable, not the finally's default delete.
             if os.path.isfile(audio_path):
@@ -353,6 +361,18 @@ def _try_remote_media_transcription(
     hooks.on_success(meeting_id, transcript_id, transcript, actor, source_label=original_url, job_id=job_id)
     set_job_done(job_id, transcript)
     return {"status": "done", "transcript": transcript, "source": "gemini_url"}
+
+
+def _already_finished(job_id) -> bool:
+    """True when the broker re-issued a task whose job already finished.
+
+    Every user-initiated (re)run gets a fresh job_id, so a delivery for a job
+    that is already DONE/FAILED/STOPPED is a duplicate and must not redo work."""
+    job = get_job(job_id)
+    if job and job.get("status") in TERMINAL_STATUSES:
+        logger.warning("Skipping duplicate delivery of finished job %s (%s)", job_id, job["status"])
+        return True
+    return False
 
 
 def _abort_if_crash_looping(job_id, log, meeting_id, actor) -> bool:
