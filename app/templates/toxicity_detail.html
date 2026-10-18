@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Toxicity Check{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Toxicity Check</h1>
+    <p><code>{{ check.id }}</code></p>
+  </div>
+  <a href="/toxicity" class="btn btn-secondary">← All checks</a>
+</div>
+
+<div class="card meta-grid">
+  <div><strong>Time</strong>{{ check.ts|checktime }}</div>
+  <div><strong>Source</strong>
+    <span class="badge {{ 'badge-info' if check.source == 'manual' else 'badge-upload' }}">{{ check.source }}</span>
+    {% if check.source == 'manual' %}test box{% else %}website{% endif %}
+  </div>
+  <div><strong>Top label</strong>{{ check.top_label }} <span class="score {{ check.top_score|score_class }}">{{ "%.4f"|format(check.top_score) }}</span></div>
+  <div><strong>Scoring time</strong>{{ check.duration_ms|round|int }} ms{% if check.batch_size > 1 %} (batch of {{ check.batch_size }}){% endif %}</div>
+  <div><strong>Length</strong>{{ check.chars }} characters{% if check.chars > 2000 %} <span class="hint">(long comments are scored on roughly their first 400 words)</span>{% endif %}</div>
+</div>
+
+<div class="card">
+  <h2>Comment</h2>
+  <div class="transcript-box">{{ check.text }}</div>
+</div>
+
+<div class="card">
+  <h2>Scores</h2>
+  <p class="hint">Each label is scored independently from 0 to 1, so scores don't add up to 1.</p>
+  {% include "partials/toxicity_scores.html" %}
+</div>
+{% endblock %}

@@ -110,6 +110,13 @@ class Settings:
         os.getenv("TRANSCRIPT_SECRET_KEY", "") or os.getenv("API_SECRET_KEY", "")
     )
 
+    # Comment toxicity scorer (toxicity/). The web app reads its check history
+    # from Redis and calls it directly over the compose network for the test box
+    # on /toxicity.
+    TOXICITY_URL: str = os.getenv("TOXICITY_URL", "http://toxicity:8000")
+    TOXICITY_SERVICE_TOKEN: str = os.getenv("TOXICITY_SERVICE_TOKEN", "")
+    TOXICITY_HISTORY_DAYS: float = float(os.getenv("TOXICITY_HISTORY_DAYS", "7"))
+
 
 settings = Settings()
 

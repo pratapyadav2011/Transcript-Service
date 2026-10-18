@@ -16,6 +16,7 @@ services:
       - caddy-config:/config
     depends_on:
       - web
+      - toxicity
 
   # With Caddy in front, the app shouldn't be reachable directly on :8000.
   web:

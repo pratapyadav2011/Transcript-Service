@@ -1,0 +1,22 @@
+<div class="tox-score-groups">
+  <div>
+    <h3>Labels the website uses</h3>
+    {% for label, score in policy %}
+    <div class="tox-bar-row">
+      <span class="tox-bar-label">{{ label }}</span>
+      <span class="tox-bar"><span class="tox-bar-fill {{ score|score_class }}" style="width: {{ '%.1f'|format(score * 100) }}%"></span></span>
+      <span class="score {{ score|score_class }}">{{ "%.4f"|format(score) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div>
+    <h3>Identity labels <small>(ignored by the website)</small></h3>
+    {% for label, score in identity %}
+    <div class="tox-bar-row">
+      <span class="tox-bar-label">{{ label }}</span>
+      <span class="tox-bar"><span class="tox-bar-fill score-low" style="width: {{ '%.1f'|format(score * 100) }}%"></span></span>
+      <span class="score score-low">{{ "%.4f"|format(score) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>

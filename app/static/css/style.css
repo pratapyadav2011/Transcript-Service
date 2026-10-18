@@ -141,3 +141,42 @@ input:focus { outline: none; border-color: var(--primary); }
 .cookie-manual { margin-bottom: 14px; }
 .cookie-manual > summary { color: var(--muted); font-size: 13px; cursor: pointer;
   margin-bottom: 12px; }
+
+/* Toxicity checks (/toxicity) */
+.tox-stats { display: flex; gap: 22px; }
+.tox-stats div { text-align: right; }
+.tox-stats strong { display: block; font-size: 20px; }
+.tox-stats span { color: var(--muted); font-size: 12px; }
+.card textarea, .tox-filters input, .tox-filters select {
+  padding: 9px 11px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit; }
+.card textarea { width: 100%; margin-top: 5px; resize: vertical; }
+.card textarea:focus, .tox-filters input:focus, .tox-filters select:focus {
+  outline: none; border-color: var(--primary); }
+.tox-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.tox-filters input { flex: 1 1 220px; }
+.tox-table-wrap { overflow-x: auto; }
+.tox-table th, .tox-table td { padding: 9px 8px; }
+.tox-table .num { text-align: right; white-space: nowrap; }
+.tox-text { min-width: 220px; max-width: 360px; word-break: break-word; }
+.tox-text a { color: var(--text); }
+.tox-pager { display: flex; gap: 10px; justify-content: flex-end; margin: 12px 0; }
+.score { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  padding: 1px 6px; border-radius: 6px; }
+.score-low { color: var(--muted); }
+.score-mid { color: var(--warn); background: rgba(245,166,35,.12); }
+.score-high { color: var(--error); background: rgba(255,92,92,.14); font-weight: 600; }
+.tox-test-result { margin-top: 14px; }
+.tox-score-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 760px) { .tox-score-groups { grid-template-columns: 1fr; } }
+.tox-score-groups h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.tox-score-groups h3 small { font-weight: 400; }
+.tox-bar-row { display: grid; grid-template-columns: 170px 1fr 70px; gap: 10px;
+  align-items: center; margin-bottom: 6px; font-size: 13px; }
+.tox-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tox-bar-row .score { text-align: right; }
+.tox-bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.tox-bar-fill { display: block; height: 100%; padding: 0; border-radius: 4px; }
+.tox-bar-fill.score-low { background: var(--muted); }
+.tox-bar-fill.score-mid { background: var(--warn); }
+.tox-bar-fill.score-high { background: var(--error); }

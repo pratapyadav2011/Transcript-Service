@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Toxicity Checks{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Toxicity Checks</h1>
+    <p>Every comment scored in the last {{ days }} days, newest first.</p>
+  </div>
+  <div class="tox-stats">
+    <div><strong>{{ stats.last_hour }}</strong><span>last hour</span></div>
+    <div><strong>{{ stats.last_day }}</strong><span>last 24h</span></div>
+    <div><strong>{{ stats.total }}</strong><span>stored</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Test a comment</h2>
+  <p class="hint">Scores any text with the live model. The check is saved to the history below as <span class="badge badge-info">manual</span>.</p>
+  <form hx-post="/htmx/toxicity/test" hx-target="#tox-test-result" hx-indicator="#tox-spinner">
+    <label>Comment
+      <textarea name="text" rows="3" maxlength="20000" required
+                placeholder="Paste a comment to see its scores"></textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">
+        <span id="tox-spinner" class="htmx-indicator spinner"></span>
+        Score
+      </button>
+    </div>
+  </form>
+  <div id="tox-test-result"></div>
+</div>
+
+<form class="tox-filters" method="get" action="/toxicity">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Search comment text" />
+  <select name="source">
+    <option value="" {% if not f.source %}selected{% endif %}>All sources</option>
+    <option value="api" {% if f.source == 'api' %}selected{% endif %}>Website (api)</option>
+    <option value="manual" {% if f.source == 'manual' %}selected{% endif %}>Test box (manual)</option>
+  </select>
+  <select name="min">
+    <option value="" {% if not f.min %}selected{% endif %}>Any score</option>
+    <option value="0.5" {% if f.min == '0.5' %}selected{% endif %}>Any label ≥ 0.5</option>
+    <option value="0.85" {% if f.min == '0.85' %}selected{% endif %}>Any label ≥ 0.85</option>
+  </select>
+  <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+  {% if filtered %}<a href="/toxicity" class="btn btn-sm">Clear</a>{% endif %}
+</form>
+
+<div id="tox-checks"
+     {% if not cursor %}
+     hx-get="/htmx/toxicity/checks{% if qs %}?{{ qs }}{% endif %}"
+     hx-trigger="every 10s, toxChecked from:body"
+     hx-swap="innerHTML"
+     {% endif %}>
+  {% include "partials/toxicity_table.html" %}
+</div>
+<p class="hint">Shading is for reading only: <span class="score score-mid">≥ 0.5</span> <span class="score score-high">≥ 0.85</span>. What actually gets held is decided by the website's thresholds.</p>
+{% endblock %}

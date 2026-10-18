@@ -71,6 +71,30 @@ services:
     depends_on:
       - redis
 
+  # Comment toxicity scorer (toxicity/README.md). A drop-in for the Hugging Face
+  # Inference API endpoint for unitary/unbiased-toxic-roberta. Separate image:
+  # it needs torch, which the transcript image doesn't.
+  toxicity:
+    build: ./toxicity
+    image: transcript-service-toxicity:latest
+    restart: unless-stopped
+    environment:
+      SERVICE_TOKEN: ${TOXICITY_SERVICE_TOKEN:?set TOXICITY_SERVICE_TOKEN in .env (openssl rand -hex 32)}
+      # Keep torch's thread count equal to the CPU allocation below.
+      TORCH_THREADS: ${TOXICITY_CPUS:-2}
+      # Each check (including the comment text) is kept this long for the
+      # /toxicity page in the transcript UI.
+      REDIS_URL: redis://redis:6379/0
+      HISTORY_DAYS: ${TOXICITY_HISTORY_DAYS:-7}
+    depends_on:
+      - redis
+    cpus: ${TOXICITY_CPUS:-2}
+    mem_limit: 2g
+    # Internal only: reached through Caddy (docker-compose.caddy.yml). Never
+    # add a "ports:" entry -- Docker-published ports bypass ufw.
+    expose:
+      - "8000"
+
   # Optional: VM end of the home residential proxy (home-proxy/ runs the other
   # end on your home machine). Cloudflare TCP tunnels need this client on the
   # calling side; it exposes the tunnel as a plain proxy at cf-proxy:8888.

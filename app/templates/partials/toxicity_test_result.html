@@ -1,0 +1,8 @@
+{% if error %}
+<div class="error-box">{{ error }}</div>
+{% else %}
+<div class="tox-test-result">
+  {% include "partials/toxicity_scores.html" %}
+  {% if check_id %}<p class="hint"><a href="/toxicity/{{ check_id }}">Open this check →</a></p>{% endif %}
+</div>
+{% endif %}

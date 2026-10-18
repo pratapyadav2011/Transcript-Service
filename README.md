@@ -90,6 +90,14 @@ docker compose up -d --build  # starts redis + web + worker + flower
 
 Scale workers (for concurrent jobs): `docker compose up -d --scale worker=3`.
 
+The stack also runs a comment toxicity scorer (`toxicity` service), which is a
+drop-in for the Hugging Face Inference API. It needs `TOXICITY_SERVICE_TOKEN`
+in `.env`, and `docker compose` won't start without it. It's reachable only
+through Caddy, at `https://DOMAIN/models/unitary/unbiased-toxic-roberta`. Every
+check, including the comment text, is listed for 7 days on the **/toxicity**
+page in the UI, which also has a box for testing a comment. See
+[toxicity/README.md](toxicity/README.md).
+
 ## Run locally (without Docker)
 
 Requires Python 3.11, `ffmpeg`, and `yt-dlp` on PATH, plus a running Redis.

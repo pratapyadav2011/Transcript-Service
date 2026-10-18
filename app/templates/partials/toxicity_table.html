@@ -1,0 +1,37 @@
+{% if checks %}
+<div class="tox-table-wrap">
+<table class="table tox-table">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Source</th>
+      <th>Comment</th>
+      {% for label, short in labels %}<th class="num" title="{{ label }}">{{ short }}</th>{% endfor %}
+      <th class="num" title="Scoring time">ms</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for c in checks %}
+    <tr>
+      <td class="ts"><a href="/toxicity/{{ c.id }}">{{ c.ts|checktime }}</a></td>
+      <td><span class="badge {{ 'badge-info' if c.source == 'manual' else 'badge-upload' }}">{{ c.source }}</span></td>
+      <td class="tox-text"><a href="/toxicity/{{ c.id }}">{{ c.text|truncate(120) }}</a></td>
+      {% for label, _ in labels %}
+        {% set s = c.scores.get(label, 0) %}
+        <td class="num"><span class="score {{ s|score_class }}">{{ "%.3f"|format(s) }}</span></td>
+      {% endfor %}
+      <td class="num ts">{{ c.duration_ms|round|int }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="tox-pager">
+  {% if cursor %}<a href="/toxicity{% if qs %}?{{ qs }}{% endif %}" class="btn btn-secondary btn-sm">← Newest</a>{% endif %}
+  {% if next_qs %}<a href="/toxicity?{{ next_qs }}" class="btn btn-secondary btn-sm">Older →</a>{% endif %}
+</div>
+{% else %}
+<div class="empty-state">
+  {% if filtered %}No checks match these filters.{% else %}No checks yet. Score a comment above, or wait for the website to send one.{% endif %}
+</div>
+{% endif %}

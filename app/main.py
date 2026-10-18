@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.api.middleware import auth_middleware
 from app.api.routers import (
     health_router, transcript_router, jobs_router, ui_router, cookies_router,
+    toxicity_router,
 )
 
 logging.basicConfig(
@@ -41,6 +42,7 @@ app.include_router(transcript_router.router)
 app.include_router(jobs_router.router)
 app.include_router(cookies_router.router)
 app.include_router(ui_router.router)
+app.include_router(toxicity_router.router)
 
 
 @app.get("/ping", include_in_schema=False)
