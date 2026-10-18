@@ -1,5 +1,7 @@
-# Caddy auto-provisions a Let's Encrypt HTTPS certificate for your domain
-# and reverse-proxies to the web container. Set DOMAIN in .env.
+# Caddy gets and auto-renews a Let's Encrypt HTTPS certificate for DOMAIN
+# (e.g. api.opgov.news) and reverse-proxies to the containers. DOMAIN needs a
+# DNS A record pointing at this VM, and ports 80 and 443 must be reachable from
+# the internet. Set DOMAIN in .env.
 {$DOMAIN} {
     # Toxicity scorer (toxicity/README.md). Only these two paths reach it; the
     # transcript app's own health check is /api/health, so there's no clash.
@@ -11,6 +13,7 @@
         reverse_proxy toxicity:8000
     }
 
+    # Everything else: the transcript app (UI, API, /toxicity history page).
     handle {
         request_body {
             max_size 2GB

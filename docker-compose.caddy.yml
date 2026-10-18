@@ -1,6 +1,7 @@
 # HTTPS overlay. Use together with the base file:
 #   docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
-# Requires DOMAIN in .env (an A record pointing at this VM's public IP).
+# Requires DOMAIN in .env (e.g. api.opgov.news) with a DNS A record pointing at
+# this VM. Ports 80 and 443 must be open.
 services:
   caddy:
     image: caddy:2-alpine
@@ -9,7 +10,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: ${DOMAIN}
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env (e.g. api.opgov.news)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -18,9 +19,9 @@ services:
       - web
       - toxicity
 
-  # With Caddy in front, the app shouldn't be reachable directly on :8000.
-  web:
-    ports: []
+  # The transcript app stays reachable directly on http://<VM-IP>:8000 too (the
+  # base file publishes it), since existing callers use that URL. The toxicity
+  # scorer is not published; it's only reachable through Caddy over HTTPS.
 
 volumes:
   caddy-data:

@@ -90,8 +90,9 @@ services:
       - redis
     cpus: ${TOXICITY_CPUS:-2}
     mem_limit: 2g
-    # Internal only: reached through Caddy (docker-compose.caddy.yml). Never
-    # add a "ports:" entry -- Docker-published ports bypass ufw.
+    # Internal only: served over HTTPS at https://$DOMAIN by Caddy
+    # (docker-compose.caddy.yml). Don't add a "ports:" entry -- the bearer token
+    # would then be sendable over plain HTTP, and Docker-published ports bypass ufw.
     expose:
       - "8000"
 

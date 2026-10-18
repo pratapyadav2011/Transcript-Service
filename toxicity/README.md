@@ -2,9 +2,9 @@
 
 A CPU-only toxicity scorer for comments that runs
 [`unitary/unbiased-toxic-roberta`](https://huggingface.co/unitary/unbiased-toxic-roberta).
-It runs as the `toxicity` container in this repo's `docker-compose.yml`, and
-the existing Caddy exposes it over HTTPS on the same domain as the transcript
-service.
+It runs as the `toxicity` container in this repo's `docker-compose.yml`. Caddy
+serves it over HTTPS at **`https://api.opgov.news/models/unitary/unbiased-toxic-roberta`**,
+on the same domain as the transcript app.
 
 It speaks the Hugging Face Inference API text-classification protocol exactly,
 so the website only needs a base-URL and token change. It scores text and
@@ -15,8 +15,8 @@ Every check, **including the comment text**, is kept in Redis for 7 days
 **/toxicity** page; see [Check history page](#check-history-page).
 
 It is a separate image from the transcript app because it needs torch, which
-the transcript image doesn't. It shares nothing with the transcript app except
-Caddy.
+the transcript image doesn't. It shares only Redis with the transcript app
+(for the check history).
 
 ## API
 
@@ -66,8 +66,8 @@ INFO POST /models/unitary/unbiased-toxic-roberta 200 107ms inputs=1 chars=50 top
 | `toxicity/app.py` | FastAPI service. Loads the model once at startup in a background thread, so `/health` can answer 503 while loading. |
 | `toxicity/requirements.txt` | Pinned dependencies, separate from the transcript app's. |
 | `toxicity/Dockerfile` | `python:3.11-slim`, CPU-only torch, model baked in at build time, non-root, with a `HEALTHCHECK`. |
-| `docker-compose.yml` → `toxicity` | 2 CPUs, `mem_limit: 2g`, internal port 8000 only. |
-| `Caddyfile` | Sends `/health` and `/models/unitary/unbiased-toxic-roberta` to `toxicity:8000` and everything else to `web:8000`. |
+| `docker-compose.yml` → `toxicity` | 2 CPUs, `mem_limit: 2g`, internal port 8000 only (never published). |
+| `Caddyfile`, `docker-compose.caddy.yml` | HTTPS for `DOMAIN`: `/health` and `/models/unitary/unbiased-toxic-roberta` go to the scorer, everything else to the transcript app. |
 | `.env` | `TOXICITY_SERVICE_TOKEN` (required), `TOXICITY_CPUS`, `TOXICITY_HISTORY_DAYS`. |
 | `app/core/toxicity_store.py`, `app/api/routers/toxicity_router.py`, `app/templates/toxicity_*.html` | The **/toxicity** page in the transcript UI. |
 
@@ -76,17 +76,16 @@ pick it up.
 
 ## Deploy on the VM
 
-HTTPS comes from the Caddy overlay (`docker-compose.caddy.yml`). Without it, the
-scorer can't be reached from outside the VM at all.
-
 ```bash
 git pull
 openssl rand -hex 32                 # → TOXICITY_SERVICE_TOKEN in .env
-$EDITOR .env                         # also TOXICITY_CPUS (whole number, default 2)
+$EDITOR .env                         # DOMAIN=api.opgov.news, TOXICITY_CPUS (whole number, default 2)
 chmod 600 .env
 
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml pull caddy
 docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 docker compose ps toxicity           # should show "(healthy)"
+docker compose logs caddy | grep -iE "certificate obtained|error"
 ```
 
 The first build downloads about 1.2 GB: CPU torch, plus the 477 MB model,
@@ -99,24 +98,31 @@ applies to every service in the file, so set it before the next deploy.
 The VM needs about 1 GB of free RAM for the scorer, on top of the transcript
 services.
 
+### HTTPS certificate
+
+Caddy gets a Let's Encrypt certificate for `DOMAIN` on first start and renews
+it automatically about 30 days before it expires. Nothing to schedule. For that
+to keep working: the DNS A record must keep pointing at the VM, ports 80 and
+443 must stay reachable from the internet (check any Linode Cloud Firewall),
+and the `caddy-data` volume must be kept (don't use `docker compose down -v`).
+
+Check the expiry date:
+`echo | openssl s_client -connect api.opgov.news:443 -servername api.opgov.news 2>/dev/null | openssl x509 -noout -enddate`
+
 ### Firewall
 
-Allow only SSH, 80, and 443:
-
 ```bash
-sudo ufw default deny incoming
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
+sudo ufw allow OpenSSH && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw enable
 ```
 
-The scorer's port 8000 is never published (`expose`, not `ports`). Keep it
-that way: **Docker-published ports bypass ufw**.
+The scorer's port is never published (`expose`, not `ports`), so it's only
+reachable through Caddy over HTTPS. Keep it that way: Docker-published ports
+bypass ufw, and the token would then be sendable over plain HTTP. The
+transcript app stays on `http://<VM-IP>:8000` as before.
 
 ## Check history page
 
-Open **`https://$DOMAIN/toxicity`** (the "Toxicity" link in the nav). It sits
+Open **`https://api.opgov.news/toxicity`** (the "Toxicity" link in the nav). It sits
 behind the transcript service's usual login, the same as `/jobs`.
 
 - **List:** every check from the last `TOXICITY_HISTORY_DAYS` days, newest
@@ -147,14 +153,13 @@ To stop storing comment text, remove `REDIS_URL` from the `toxicity` service in
 
 ## Point the website at it
 
-Replace the HF base URL with `https://$DOMAIN` (the transcript service's
-domain), and the HF token with `TOXICITY_SERVICE_TOKEN`. The path, request
-body, and response shape are unchanged.
+Replace the HF URL with `https://api.opgov.news/models/unitary/unbiased-toxic-roberta`
+and the HF token with `TOXICITY_SERVICE_TOKEN`. The request body and response shape are unchanged.
 
 ## Acceptance tests
 
 ```bash
-export HOST=<DOMAIN> TOKEN=<TOXICITY_SERVICE_TOKEN>
+export HOST=api.opgov.news TOKEN=<TOXICITY_SERVICE_TOKEN>
 P=https://$HOST/models/unitary/unbiased-toxic-roberta
 
 curl -s https://$HOST/health                                     # {"ok":true,"model_loaded":true}
@@ -225,7 +230,7 @@ time on first boot.
 |---|---|
 | Image size | 2.27 GB (torch CPU + deps ~850 MB, model 477 MB) |
 | Model load inside the process | 1.2 s first start, 0.2 s with warm page cache |
-| Restart → healthy through Caddy | 2.5 s |
+| Restart → healthy | 2–2.5 s |
 | Container memory once warm (`docker stats`) | ~290 MiB (weights are mmapped, so part shows as page cache) |
 | Latency, 20 sequential ~200-word requests | p50 473 ms, p95 495 ms |
 | Latency, short comment (~10 words) | ~80–110 ms |

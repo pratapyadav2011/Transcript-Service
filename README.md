@@ -92,8 +92,9 @@ Scale workers (for concurrent jobs): `docker compose up -d --scale worker=3`.
 
 The stack also runs a comment toxicity scorer (`toxicity` service), which is a
 drop-in for the Hugging Face Inference API. It needs `TOXICITY_SERVICE_TOKEN`
-in `.env`, and `docker compose` won't start without it. It's reachable only
-through Caddy, at `https://DOMAIN/models/unitary/unbiased-toxic-roberta`. Every
+in `.env`, and `docker compose` won't start without it. Caddy serves it
+over HTTPS at `https://DOMAIN/models/unitary/unbiased-toxic-roberta`
+(e.g. `https://api.opgov.news/...`). Every
 check, including the comment text, is listed for 7 days on the **/toxicity**
 page in the UI, which also has a box for testing a comment. See
 [toxicity/README.md](toxicity/README.md).
