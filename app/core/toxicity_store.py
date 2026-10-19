@@ -109,14 +109,14 @@ def score_manual(text: str) -> tuple[list[dict], str | None]:
 
     Returns all 16 labels (highest first) and the new check's id, if saved.
     """
-    if not settings.TOXICITY_SERVICE_TOKEN:
-        raise ScorerError("TOXICITY_SERVICE_TOKEN is not set for the web container")
+    if not settings.API_SERVICE_TOKEN:
+        raise ScorerError("API_SERVICE_TOKEN is not set for the web container")
     try:
         resp = httpx.post(
             settings.TOXICITY_URL.rstrip("/") + MODEL_PATH,
             json={"inputs": text, "parameters": {"top_k": None}},
             headers={
-                "Authorization": f"Bearer {settings.TOXICITY_SERVICE_TOKEN}",
+                "Authorization": f"Bearer {settings.API_SERVICE_TOKEN}",
                 "X-Check-Source": "manual",
             },
             timeout=30,

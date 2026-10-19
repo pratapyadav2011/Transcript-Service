@@ -79,7 +79,8 @@ services:
     image: transcript-service-toxicity:latest
     restart: unless-stopped
     environment:
-      SERVICE_TOKEN: ${TOXICITY_SERVICE_TOKEN:?set TOXICITY_SERVICE_TOKEN in .env (openssl rand -hex 32)}
+      # Same secret as the web app.
+      SERVICE_TOKEN: ${API_SERVICE_TOKEN:?set API_SERVICE_TOKEN in .env (openssl rand -hex 32)}
       # Keep torch's thread count equal to the CPU allocation below.
       TORCH_THREADS: ${TOXICITY_CPUS:-2}
       # Each check (including the comment text) is kept this long for the

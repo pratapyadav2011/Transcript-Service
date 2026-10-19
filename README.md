@@ -91,8 +91,8 @@ docker compose up -d --build  # starts redis + web + worker + flower
 Scale workers (for concurrent jobs): `docker compose up -d --scale worker=3`.
 
 The stack also runs a comment toxicity scorer (`toxicity` service), which is a
-drop-in for the Hugging Face Inference API. It needs `TOXICITY_SERVICE_TOKEN`
-in `.env`, and `docker compose` won't start without it. Caddy serves it
+drop-in for the Hugging Face Inference API. It authenticates with the
+same `API_SERVICE_TOKEN` as the rest of the service. Caddy serves it
 over HTTPS at `https://DOMAIN/models/unitary/unbiased-toxic-roberta`
 (e.g. `https://api.opgov.news/...`). Every
 check, including the comment text, is listed for 7 days on the **/toxicity**
@@ -118,19 +118,31 @@ celery -A app.core.celery_app flower --port=5555
 
 ## Securing the service (no login)
 
-The whole service is gated by a single shared secret, `TRANSCRIPT_SECRET_KEY`. There
+The whole service, including the toxicity scorer, is gated by a single shared
+secret, `API_SERVICE_TOKEN`. There
 are no user accounts — your website is the only thing that can let people in.
 
-1. Set `AUTH_ENABLED=true` and a strong secret in `.env`:
-   `TRANSCRIPT_SECRET_KEY=$(openssl rand -hex 32)`.
-2. Put the **same value** in your website's backend env (e.g. `TRANSCRIPT_API_SECRET`).
-3. Restart. Unauthenticated requests now get `401`; `/api/health` and `/static`
-   stay public.
+1. Set a strong secret in `.env`: `API_SERVICE_TOKEN=$(openssl rand -hex 32)`
+   (at least 32 characters; `docker compose` won't start without it).
+2. Put the **same value** in your website's backend env as `API_SERVICE_TOKEN`.
+3. Restart.
 
-For local or otherwise trusted use, set `AUTH_ENABLED=false` and restart the
-web container. This opens both the dashboard and API without credentials.
-Leaving `TRANSCRIPT_SECRET_KEY` blank also disables auth. The legacy
-`API_SECRET_KEY` name remains supported temporarily for migration.
+Once the secret is set, **the API (`/api/...`, `/htmx/...`) always needs
+credentials**: unauthenticated calls get `401`. `/api/health` and `/static`
+stay public. `AUTH_ENABLED` only controls the UI pages:
+
+- `AUTH_ENABLED=true`: the UI also needs credentials. Open it through your
+  website's login link (`?token=...`).
+- `AUTH_ENABLED=false`: the UI is open to anyone. Opening a page gives the
+  browser a session cookie, so the UI's own buttons (which call `/api/...`)
+  keep working. Anyone who opens the UI can still do whatever the UI does
+  (create, stop, or delete jobs, read transcripts and `/toxicity`), so this
+  only blocks direct API calls that don't go through the UI. Use `true` once
+  the UI no longer needs to be open.
+
+Only `API_SERVICE_TOKEN` is read; the old names `TRANSCRIPT_SECRET_KEY`,
+`API_SECRET_KEY` and `TOXICITY_SERVICE_TOKEN` are ignored. Leaving it blank
+disables auth on the transcript app (local dev only).
 
 A request is authorized by any of: the `X-API-Key` header, an
 `Authorization: Bearer <token>` header, a `?token=` query param, or the
@@ -140,14 +152,14 @@ A request is authorized by any of: the `X-API-Key` header, an
 without calling this service:
 
 ```
-token = "<expiry_unix>.<hmac_sha256(TRANSCRIPT_SECRET_KEY, expiry_unix)>"
+token = "<expiry_unix>.<hmac_sha256(API_SERVICE_TOKEN, expiry_unix)>"
 ```
 
 Next.js / Node:
 
 ```js
 import crypto from "crypto";
-const SECRET = process.env.TRANSCRIPT_API_SECRET;
+const SECRET = process.env.API_SERVICE_TOKEN;
 
 export function makeTranscriptToken(ttlSeconds = 3600) {
   const expiry = String(Math.floor(Date.now() / 1000) + ttlSeconds);

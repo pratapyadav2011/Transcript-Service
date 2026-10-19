@@ -55,7 +55,7 @@ def fake(monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(settings, "AUTH_ENABLED", False)
+    monkeypatch.setattr(settings, "API_SERVICE_TOKEN", "")  # auth off
     from app.main import app
     return TestClient(app)
 

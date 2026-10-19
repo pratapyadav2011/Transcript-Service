@@ -35,12 +35,14 @@ def download_extension(request: Request):
     unpacked — but they never have to type the service URL.
     """
     base = str(request.base_url).rstrip("/")
-    # Same condition as auth_middleware: no secret configured means auth is off.
-    # This request is already authenticated, so minting a token for the extension
-    # grants nothing the downloader does not already have. Rotating
-    # TRANSCRIPT_SECRET_KEY revokes every token handed out this way.
+    # Same condition as auth_middleware for /api: no secret configured means auth
+    # is off. The extension posts to /api/cookies, which needs a token whenever a
+    # secret is set, even while the UI is open (AUTH_ENABLED=false). This request
+    # is already authenticated, so minting a token for the extension grants
+    # nothing the downloader does not already have. Rotating
+    # API_SERVICE_TOKEN revokes every token handed out this way.
     auth_token = ""
-    if settings.AUTH_ENABLED and settings.TRANSCRIPT_SECRET_KEY:
+    if settings.API_SERVICE_TOKEN:
         auth_token = make_token(EXTENSION_TOKEN_TTL_SECONDS)
     try:
         payload = extension_packager.build_zip(base, auth_token=auth_token)

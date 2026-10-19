@@ -10,8 +10,16 @@ A request is allowed if ANY of these hold:
 A valid `?token=` also sets the session cookie, so your website only needs to
 link a user in once (e.g. https://transcripts.example.com/?token=XYZ).
 
-If AUTH_ENABLED is false, or TRANSCRIPT_SECRET_KEY is unset, auth is DISABLED (open)
-so local dev works — always enable auth and set the secret in production.
+The API (/api/..., /htmx/...) always needs one of the above once
+API_SERVICE_TOKEN is set. AUTH_ENABLED only controls the UI pages:
+
+  • AUTH_ENABLED=true  — UI pages need one of the above too.
+  • AUTH_ENABLED=false — UI pages are open, and opening one hands the browser a
+    session cookie so the UI's own buttons (which call /api/...) keep working.
+    Anyone who opens the UI can therefore still do whatever the UI does; this
+    only stops direct API calls that don't come through the UI.
+
+If API_SERVICE_TOKEN is unset, everything is open (local dev only).
 """
 from __future__ import annotations
 import logging
@@ -20,7 +28,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.core.config import settings
-from app.core.security import verify_token, verify_api_key, SESSION_COOKIE
+from app.core.security import make_token, verify_token, verify_api_key, SESSION_COOKIE
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +41,22 @@ def _is_public(path: str) -> bool:
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
 
+def _is_api(path: str) -> bool:
+    return path.startswith("/api") or path.startswith("/htmx")
+
+
+def _set_session(response, token: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=COOKIE_MAX_AGE,
+        httponly=True, samesite="lax",
+    )
+
+
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Dev fallback: explicitly disabled or no secret configured.
-    if not settings.AUTH_ENABLED or not settings.TRANSCRIPT_SECRET_KEY:
+    # Dev fallback: no secret configured.
+    if not settings.API_SERVICE_TOKEN:
         return await call_next(request)
 
     if _is_public(path):
@@ -56,18 +75,22 @@ async def auth_middleware(request: Request, call_next):
     qtoken = request.query_params.get("token")
     if qtoken and verify_token(qtoken):
         response = await call_next(request)
-        response.set_cookie(
-            SESSION_COOKIE, qtoken, max_age=COOKIE_MAX_AGE,
-            httponly=True, samesite="lax",
-        )
+        _set_session(response, qtoken)
         return response
 
     # 4. Session cookie from a previous valid entry.
     if verify_token(request.cookies.get(SESSION_COOKIE, "")):
         return await call_next(request)
 
+    # 5. Open UI: serve the page and give the browser a session so the page's
+    #    own /api and /htmx calls are allowed.
+    if not settings.AUTH_ENABLED and not _is_api(path):
+        response = await call_next(request)
+        _set_session(response, make_token(COOKIE_MAX_AGE))
+        return response
+
     # Unauthorized.
-    if path.startswith("/api") or path.startswith("/htmx"):
+    if _is_api(path):
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return PlainTextResponse(
         "Unauthorized. Open this service through your website's secure link.",

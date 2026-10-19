@@ -30,7 +30,7 @@ any site from reading another site's cookies, and Google's session cookies are
 
 The service URL is pre-filled when you download the zip from the service itself,
 along with a signed access token if that service has auth enabled — so the popup
-never asks you for credentials. Rotating `TRANSCRIPT_SECRET_KEY` on the server
+never asks you for credentials. Rotating `API_SERVICE_TOKEN` on the server
 invalidates tokens handed out this way; re-download the zip to get a fresh one.
 
 Repeat step 3 whenever downloads start failing again — Google rotates these

@@ -22,7 +22,7 @@ the transcript image doesn't. It shares only Redis with the transcript app
 
 ```
 POST /models/unitary/unbiased-toxic-roberta
-Authorization: Bearer <TOXICITY_SERVICE_TOKEN>
+Authorization: Bearer <API_SERVICE_TOKEN>
 Content-Type: application/json
 
 { "inputs": "text to score", "parameters": { "top_k": 20 } }
@@ -68,7 +68,7 @@ INFO POST /models/unitary/unbiased-toxic-roberta 200 107ms inputs=1 chars=50 top
 | `toxicity/Dockerfile` | `python:3.11-slim`, CPU-only torch, model baked in at build time, non-root, with a `HEALTHCHECK`. |
 | `docker-compose.yml` → `toxicity` | 2 CPUs, `mem_limit: 2g`, internal port 8000 only (never published). |
 | `Caddyfile`, `docker-compose.caddy.yml` | HTTPS for `DOMAIN`: `/health` and `/models/unitary/unbiased-toxic-roberta` go to the scorer, everything else to the transcript app. |
-| `.env` | `TOXICITY_SERVICE_TOKEN` (required), `TOXICITY_CPUS`, `TOXICITY_HISTORY_DAYS`. |
+| `.env` | `API_SERVICE_TOKEN` (required, shared with the transcript app), `TOXICITY_CPUS`, `TOXICITY_HISTORY_DAYS`. |
 | `app/core/toxicity_store.py`, `app/api/routers/toxicity_router.py`, `app/templates/toxicity_*.html` | The **/toxicity** page in the transcript UI. |
 
 The root `.dockerignore` excludes `toxicity/`, so the transcript image doesn't
@@ -78,7 +78,7 @@ pick it up.
 
 ```bash
 git pull
-openssl rand -hex 32                 # → TOXICITY_SERVICE_TOKEN in .env
+openssl rand -hex 32                 # → API_SERVICE_TOKEN in .env (same as the website's)
 $EDITOR .env                         # DOMAIN=api.opgov.news, TOXICITY_CPUS (whole number, default 2)
 chmod 600 .env
 
@@ -92,7 +92,7 @@ The first build downloads about 1.2 GB: CPU torch, plus the 477 MB model,
 which is baked into the image. After that the container starts with no network
 access needed.
 
-`docker compose` refuses to run while `TOXICITY_SERVICE_TOKEN` is unset. That
+`docker compose` refuses to run while `API_SERVICE_TOKEN` is unset. That
 applies to every service in the file, so set it before the next deploy.
 
 The VM needs about 1 GB of free RAM for the scorer, on top of the transcript
@@ -144,7 +144,7 @@ How it works: the scorer writes each check to the existing Redis as
 `toxicity:check:{id}` (JSON, expiring after `TOXICITY_HISTORY_DAYS`) and indexes
 it in the `toxicity:checks` sorted set, capped at 20,000 entries. If Redis is
 down, scoring still works and the check just isn't saved. The test box calls
-the scorer directly at `http://toxicity:8000` with `TOXICITY_SERVICE_TOKEN`.
+the scorer directly at `http://toxicity:8000` with `API_SERVICE_TOKEN`.
 The web container reads that token from `.env`.
 
 To stop storing comment text, remove `REDIS_URL` from the `toxicity` service in
@@ -154,12 +154,12 @@ To stop storing comment text, remove `REDIS_URL` from the `toxicity` service in
 ## Point the website at it
 
 Replace the HF URL with `https://api.opgov.news/models/unitary/unbiased-toxic-roberta`
-and the HF token with `TOXICITY_SERVICE_TOKEN`. The request body and response shape are unchanged.
+and the HF token with `API_SERVICE_TOKEN`. The request body and response shape are unchanged.
 
 ## Acceptance tests
 
 ```bash
-export HOST=api.opgov.news TOKEN=<TOXICITY_SERVICE_TOKEN>
+export HOST=api.opgov.news TOKEN=<API_SERVICE_TOKEN>
 P=https://$HOST/models/unitary/unbiased-toxic-roberta
 
 curl -s https://$HOST/health                                     # {"ok":true,"model_loaded":true}
@@ -211,13 +211,15 @@ To roll back, set the old SHA and rebuild.
 
 ```bash
 openssl rand -hex 32                  # new token
-$EDITOR .env                          # replace TOXICITY_SERVICE_TOKEN
-docker compose up -d toxicity         # recreates the container with the new env
+$EDITOR .env                          # replace API_SERVICE_TOKEN
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d web toxicity
 ```
 
-Use `up -d`, not `restart`. `restart` keeps the old environment. Update the
-website's secret immediately afterwards. Requests made with the old token get
-401 until it switches.
+Use `up -d`, not `restart`. `restart` keeps the old environment. The same
+token is used by the web app (job API, UI login links) and the scorer, so both
+are recreated. Update the website's `API_SERVICE_TOKEN` immediately afterwards.
+Until then its requests get 401: toxicity checks fail (comments are held for
+review) and job creation fails.
 
 ## Measurements
 

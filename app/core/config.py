@@ -106,15 +106,15 @@ class Settings:
 
     # Shared secret for Next.js → Python service calls. Keep the old environment
     # name as a migration fallback so existing deployments do not lock users out.
-    TRANSCRIPT_SECRET_KEY: str = (
-        os.getenv("TRANSCRIPT_SECRET_KEY", "") or os.getenv("API_SECRET_KEY", "")
-    )
+    # The one shared secret for this whole service, the same value as the
+    # website's API_SERVICE_TOKEN: X-API-Key on /api/..., UI login-link signing,
+    # and the toxicity scorer's bearer token.
+    API_SERVICE_TOKEN: str = os.getenv("API_SERVICE_TOKEN", "")
 
     # Comment toxicity scorer (toxicity/). The web app reads its check history
     # from Redis and calls it directly over the compose network for the test box
     # on /toxicity.
     TOXICITY_URL: str = os.getenv("TOXICITY_URL", "http://toxicity:8000")
-    TOXICITY_SERVICE_TOKEN: str = os.getenv("TOXICITY_SERVICE_TOKEN", "")
     TOXICITY_HISTORY_DAYS: float = float(os.getenv("TOXICITY_HISTORY_DAYS", "7"))
 
 
